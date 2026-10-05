@@ -2,21 +2,22 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/utils/supabase';
 import { Plus, Edit, Trash2, Loader2, RefreshCw, Building, BookOpen, MapPin } from 'lucide-react';
+import { type SemesterItem, type TipeRuang, type Ruangan, type MataKuliah } from '@/types/master'; 
 
 type TabType = 'ruang' | 'prodi' | 'mk';
 
-interface RuangItem {
-  id: number;
-  nama_ruang: string;
-  kapasitas?: number;
-  tipe_ruang_id: number;
-  tipe_ruang?: { tipe_ruang?: string };
-}
+// interface RuangItem {
+//   id: number;
+//   nama_ruang: string;
+//   kapasitas?: number;
+//   tipe_ruang_id: number;
+//   tipe_ruang?: { tipe_ruang?: string };
+// }
 
-interface TipeRuangItem {
-  id: number;
-  tipe_ruang: string;
-}
+// interface TipeRuangItem {
+//   id: number;
+//   tipe_ruang: string;
+// }
 
 interface ProdiItem {
   id: number;
@@ -24,32 +25,32 @@ interface ProdiItem {
   nama_prodi: string;
 }
 
-interface SemesterItem {
-  id: number;
-  semester?: string; // Sesuaikan dengan kolom nama semester di tabel semester Anda
-}
+// interface SemesterItem {
+//   id: number;
+//   semester?: string; // Sesuaikan dengan kolom nama semester di tabel semester Anda
+// }
 
-interface MkItem {
-  id: number;
-  kode_mk: string;
-  nama_mk: string;
-  sks: number;
-  smt_id?: number;
-  semester?: { semester?: string };
-  prodi_id?: number;
-  prodi?: { nama_prodi?: string };
-}
+// interface MkItem {
+//   id: number;
+//   kode_mk: string;
+//   nama_mk: string;
+//   sks: number;
+//   smt_id?: number;
+//   semester?: { semester?: string };
+//   prodi_id?: number;
+//   prodi?: { nama_prodi?: string };
+// }
 
 export const MasterDataPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('ruang');
   const [loading, setLoading] = useState<boolean>(true);
 
   // Data States
-  const [ruangList, setRuangList] = useState<RuangItem[]>([]);
-  const [tipeRuangList, setTipeRuangList] = useState<TipeRuangItem[]>([]);
+  const [ruangList, setRuangList] = useState<Ruangan[]>([]);
+  const [tipeRuangList, setTipeRuangList] = useState<TipeRuang[]>([]);
   const [prodiList, setProdiList] = useState<ProdiItem[]>([]);
   const [semesterList, setSemesterList] = useState<SemesterItem[]>([]);
-  const [mkList, setMkList] = useState<MkItem[]>([]);
+  const [mkList, setMkList] = useState<MataKuliah[]>([]);
 
   // Modal States
   const [showModal, setShowModal] = useState<boolean>(false);

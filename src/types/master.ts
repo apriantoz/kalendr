@@ -13,7 +13,7 @@ export interface Prodi {
   created_at?: string;
 }
 
-export interface SemesterPaket {
+export interface SemesterItem {
   id: number;
   semester: number; // 1, 2, 3, dst.
 }
@@ -31,7 +31,7 @@ export interface MataKuliah {
   prodi_id: number;
   smt_id: number;
   prodi?: Prodi;
-  semester?: SemesterPaket;
+  semester?: SemesterItem;
 }
 
 export interface Ruangan {
