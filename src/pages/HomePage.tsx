@@ -1,330 +1,1055 @@
-// src/pages/HomePage.tsx
-import React, { useEffect, useState } from 'react';
-import { supabase } from '@/utils/supabase';
-import { 
-  getBentrokDetails, 
-  getMkName, 
-  getRuangName, 
-  type ScheduleItem 
-} from '@/utils/scheduleHelpers';
-import { 
-  Search, 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  BookOpen, 
-  RefreshCw, 
-  AlertTriangle, 
+import React, { useEffect, useMemo, useState } from 'react'
+import { supabase } from '@/utils/supabase'
+import {
+  AlertCircle,
+  CalendarDays,
+  ChevronDown,
+  Clock3,
+  DoorOpen,
   GraduationCap,
-  Sparkles
-} from 'lucide-react';
+  RefreshCw,
+  Search,
+  Sparkles,
+  X,
+} from 'lucide-react'
+import {
+  getBentrokDetails,
+  getMkName,
+  getRuangName,
+  type ScheduleItem,
+} from '@/utils/scheduleHelpers'
 
-export interface JadwalPublicItem extends ScheduleItem {
-  kode_mk?: string;
-  tahun_ajaran?: string;
-  tipe_semester?: string;
-  catatan?: string;
+interface JadwalPublicItem extends ScheduleItem {
+  kode_mk?: string
+  tahun_ajaran?: string
+  tipe_semester?: string
+  catatan?: string
+}
+
+interface MasterSemester {
+  id: number
+  tahun_ajaran: string
+  tipe_semester: string
+  is_active: boolean
+}
+
+const HARI_ORDER = [
+  'Senin',
+  'Selasa',
+  'Rabu',
+  'Kamis',
+  'Jumat',
+  'Sabtu',
+  'Minggu',
+]
+
+const HARI_OPTIONS = ['Semua', ...HARI_ORDER]
+
+const getHariIndex = (hari?: string) => {
+  const index = HARI_ORDER.indexOf(hari || '')
+  return index === -1 ? 99 : index
+}
+
+const formatTime = (time?: string | null) =>
+  time ? String(time).slice(0, 5) : '-'
+
+const getSemesterLabel = (item: JadwalPublicItem) => {
+  if (!item.tahun_ajaran && !item.tipe_semester) return '-'
+
+  return [item.tahun_ajaran, item.tipe_semester]
+    .filter(Boolean)
+    .join(' • ')
+}
+
+const getInitials = (name?: string) => {
+  if (!name) return 'MK'
+
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('')
 }
 
 export const HomePage: React.FC = () => {
-  const [jadwalList, setJadwalList] = useState<JadwalPublicItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [jadwalList, setJadwalList] = useState<JadwalPublicItem[]>([])
+  const [activeSemester, setActiveSemester] =
+    useState<MasterSemester | null>(null)
 
-  // State Filter
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedHari, setSelectedHari] = useState<string>('Semua');
-  const [selectedRuang, setSelectedRuang] = useState<string>('Semua');
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // List Ruangan unik untuk filter dropdown
-  const [ruangList, setRuangList] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedHari, setSelectedHari] = useState('Semua')
+  const [selectedRuang, setSelectedRuang] = useState('Semua')
+  const [selectedSemester, setSelectedSemester] = useState('Semua')
 
-  // Fetch Jadwal Publik dari View view_jadwal_detail
-  const fetchJadwalPublik = async () => {
-    setLoading(true);
-    setError(null);
+  const fetchJadwalPublik = async (isRefresh = false) => {
     try {
-      const { data, error } = await supabase
-        .from('view_jadwal_detail')
-        .select('*')
-        .order('hari', { ascending: true })
-        .order('jam_mulai', { ascending: true });
+      if (isRefresh) {
+        setRefreshing(true)
+      } else {
+        setLoading(true)
+      }
 
-      if (error) throw error;
+      setError(null)
 
-      const formattedData = (data || []).map((item: any) => ({
-        ...item,
-        id: item.jadwal_id || item.id,
-      }));
+      const [jadwalResult, semesterResult] = await Promise.all([
+        supabase
+          .from('view_jadwal_detail')
+          .select('*'),
 
-      setJadwalList(formattedData);
+        supabase
+          .from('master_semester')
+          .select('id, tahun_ajaran, tipe_semester, is_active')
+          .eq('is_active', true)
+          .maybeSingle(),
+      ])
 
-      // Ambil daftar ruangan unik
-      const uniqueRuang = Array.from(
-        new Set(formattedData.map((i) => i.nama_ruang).filter(Boolean))
-      ) as string[];
-      setRuangList(uniqueRuang);
+      if (jadwalResult.error) {
+        throw jadwalResult.error
+      }
 
+      const formattedData = (
+        (jadwalResult.data || []) as JadwalPublicItem[]
+      )
+        .map((item) => ({
+          ...item,
+          id: item.jadwal_id || item.id,
+        }))
+        .sort((a, b) => {
+          const hariDiff =
+            getHariIndex(a.hari) - getHariIndex(b.hari)
+
+          if (hariDiff !== 0) return hariDiff
+
+          return String(a.jam_mulai || '').localeCompare(
+            String(b.jam_mulai || ''),
+          )
+        })
+
+      setJadwalList(formattedData)
+
+      if (!semesterResult.error) {
+        setActiveSemester(
+          (semesterResult.data as MasterSemester | null) || null,
+        )
+      }
     } catch (err: any) {
-      console.error('Error fetching public schedule:', err);
-      setError('Gagal memuat jadwal perkuliahan.');
+      console.error('Error fetching public schedule:', err)
+      setError(err?.message || 'Gagal memuat jadwal.')
     } finally {
-      setLoading(false);
+      setLoading(false)
+      setRefreshing(false)
     }
-  };
+  }
 
   useEffect(() => {
-    fetchJadwalPublik();
-  }, []);
+    fetchJadwalPublik()
+  }, [])
 
-  // Filter Data Berdasarkan Input User
-  const filteredJadwal = jadwalList.filter((item) => {
-    // Filter Hari
-    if (selectedHari !== 'Semua' && item.hari !== selectedHari) return false;
+  const ruangList = useMemo(() => {
+    return Array.from(
+      new Set(
+        jadwalList
+          .map((item) => getRuangName(item))
+          .filter((value) => value && value !== '-'),
+      ),
+    ).sort((a, b) => a.localeCompare(b))
+  }, [jadwalList])
 
-    // Filter Ruangan
-    if (selectedRuang !== 'Semua' && item.nama_ruang !== selectedRuang) return false;
+  const semesterList = useMemo(() => {
+    return Array.from(
+      new Set(
+        jadwalList
+          .map((item) => getSemesterLabel(item))
+          .filter((value) => value && value !== '-'),
+      ),
+    )
+  }, [jadwalList])
 
-    // Filter Pencarian Kata Kunci
-    if (searchQuery.trim() !== '') {
-      const q = searchQuery.toLowerCase();
-      const matchMk = getMkName(item).toLowerCase().includes(q);
-      const matchKode = item.kode_mk?.toLowerCase().includes(q);
-      const matchRuang = getRuangName(item).toLowerCase().includes(q);
-      const matchCatatan = item.catatan?.toLowerCase().includes(q);
-      return matchMk || matchKode || matchRuang || matchCatatan;
+  const filteredJadwal = useMemo(() => {
+    const keyword = searchQuery.trim().toLowerCase()
+
+    return jadwalList.filter((item) => {
+      const namaMk = getMkName(item) || ''
+      const namaRuang = getRuangName(item) || ''
+      const semester = getSemesterLabel(item)
+      const catatan = item.catatan || ''
+      const kodeMk = item.kode_mk || ''
+
+      const matchesHari =
+        selectedHari === 'Semua' || item.hari === selectedHari
+
+      const matchesRuang =
+        selectedRuang === 'Semua' ||
+        namaRuang === selectedRuang
+
+      const matchesSemester =
+        selectedSemester === 'Semua' ||
+        semester === selectedSemester
+
+      const searchableText = [
+        namaMk,
+        kodeMk,
+        namaRuang,
+        semester,
+        catatan,
+      ]
+        .join(' ')
+        .toLowerCase()
+
+      return (
+        matchesHari &&
+        matchesRuang &&
+        matchesSemester &&
+        (!keyword || searchableText.includes(keyword))
+      )
+    })
+  }, [
+    jadwalList,
+    searchQuery,
+    selectedHari,
+    selectedRuang,
+    selectedSemester,
+  ])
+
+  const stats = useMemo(() => {
+    const rooms = new Set(
+      jadwalList
+        .map((item) => getRuangName(item))
+        .filter((value) => value && value !== '-'),
+    )
+
+    const days = new Set(
+      jadwalList.map((item) => item.hari).filter(Boolean),
+    )
+
+    const conflicts = jadwalList.filter(
+      (item) =>
+        (getBentrokDetails(item, jadwalList) ?? []).length > 0,
+    ).length
+
+    return {
+      total: jadwalList.length,
+      rooms: rooms.size,
+      days: days.size,
+      conflicts,
     }
+  }, [jadwalList])
 
-    return true;
-  });
+  const jadwalHariIni = useMemo(() => {
+    const today = new Intl.DateTimeFormat('id-ID', {
+      weekday: 'long',
+    }).format(new Date())
 
-  const hariOptions = ['Semua', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+    return jadwalList.filter(
+      (item) =>
+        item.hari?.toLowerCase() === today.toLowerCase(),
+    )
+  }, [jadwalList])
+
+  const hasFilters =
+    Boolean(searchQuery.trim()) ||
+    selectedHari !== 'Semua' ||
+    selectedRuang !== 'Semua' ||
+    selectedSemester !== 'Semua'
+
+  const resetFilters = () => {
+    setSearchQuery('')
+    setSelectedHari('Semua')
+    setSelectedRuang('Semua')
+    setSelectedSemester('Semua')
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 pb-12">
-      {/* Hero Section */}
-      <div className="bg-gradient-to-r from-indigo-700 via-indigo-600 to-blue-600 text-white py-12 px-4 sm:px-6 lg:px-8 shadow-md">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="space-y-3 text-center md:text-left">
-            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full text-xs font-medium text-indigo-100">
-              <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-              Sistem Informasi Penjadwalan Perkuliahan
+    <main className="min-h-screen bg-slate-50 text-slate-900">
+
+      {/* HERO */}
+      <section className="relative overflow-hidden border-b border-slate-200 bg-white">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.10),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.06),transparent_30%)]" />
+
+        <div className="relative mx-auto max-w-7xl px-4 pb-10 pt-10 sm:px-6 lg:px-8 lg:pb-14 lg:pt-14">
+          <div className="max-w-3xl">
+
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">
+              <Sparkles size={14} />
+              Jadwal Akademik
             </div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-              Jadwal Kuliah & Kegiatan Akademik
+
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl lg:text-5xl">
+              Temukan jadwal kuliah
+              <span className="block text-indigo-600">
+                dengan cepat.
+              </span>
             </h1>
-            <p className="text-indigo-100 text-sm sm:text-base max-w-2xl">
-              Cek alokasi ruangan, jam kuliah, dan status perkuliahan secara terupdate dan transparan tanpa perlu login.
+
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
+              Cari mata kuliah, ruangan, atau waktu perkuliahan
+              tanpa perlu login. Semua jadwal tersedia dalam satu
+              tempat.
             </p>
+
+            <div className="mt-6 flex flex-wrap items-center gap-3 text-sm">
+
+              <div className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-slate-600">
+                <GraduationCap
+                  size={16}
+                  className="text-indigo-600"
+                />
+
+                {activeSemester
+                  ? `${activeSemester.tahun_ajaran} • ${activeSemester.tipe_semester}`
+                  : 'Semester aktif belum diset'}
+              </div>
+
+              <div className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-slate-600">
+                <CalendarDays
+                  size={16}
+                  className="text-indigo-600"
+                />
+                {stats.total} jadwal tersedia
+              </div>
+
+            </div>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-2xl flex items-center gap-4 text-center">
-            <GraduationCap className="w-10 h-10 text-yellow-300" />
-            <div className="text-left">
-              <span className="text-xs uppercase font-semibold tracking-wider text-indigo-200">Total Jadwal</span>
-              <p className="text-2xl font-bold text-white">{jadwalList.length} Sesi</p>
-            </div>
+          {/* STATISTICS */}
+          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+
+            <StatCard
+              label="Total Jadwal"
+              value={stats.total}
+              icon={<CalendarDays size={18} />}
+            />
+
+            <StatCard
+              label="Ruangan"
+              value={stats.rooms}
+              icon={<DoorOpen size={18} />}
+            />
+
+            <StatCard
+              label="Hari Aktif"
+              value={stats.days}
+              icon={<Clock3 size={18} />}
+            />
+
+            <StatCard
+              label="Bentrok"
+              value={stats.conflicts}
+              danger={stats.conflicts > 0}
+              icon={<AlertCircle size={18} />}
+            />
+
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Main Content Area */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6">
-        {/* Card Panel Filter Search */}
-        <div className="bg-white rounded-2xl shadow-lg border border-slate-200/80 p-5 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-            
-            {/* Input Pencarian */}
-            <div className="md:col-span-5 relative">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+
+        {/* SEARCH & FILTER */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-800">
+              Cari jadwal
+            </label>
+
+            <div className="relative">
+
+              <Search
+                size={20}
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+
               <input
                 type="text"
-                placeholder="Cari mata kuliah, kode, atau ruangan..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full text-sm pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition"
+                onChange={(event) =>
+                  setSearchQuery(event.target.value)
+                }
+                placeholder="Cari mata kuliah, kode, ruangan, atau catatan..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-12 pr-11 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-50"
               />
-            </div>
 
-            {/* Filter Hari */}
-            <div className="md:col-span-3">
-              <select
-                value={selectedHari}
-                onChange={(e) => setSelectedHari(e.target.value)}
-                className="w-full text-sm py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition"
-              >
-                {hariOptions.map((h) => (
-                  <option key={h} value={h}>
-                    Hari: {h}
-                  </option>
-                ))}
-              </select>
-            </div>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Hapus pencarian"
+                >
+                  <X size={16} />
+                </button>
+              )}
 
-            {/* Filter Ruangan */}
-            <div className="md:col-span-3">
-              <select
-                value={selectedRuang}
-                onChange={(e) => setSelectedRuang(e.target.value)}
-                className="w-full text-sm py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition"
-              >
-                <option value="Semua">Ruangan: Semua</option>
-                {ruangList.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
             </div>
+          </div>
 
-            {/* Refresh Button */}
-            <div className="md:col-span-1 flex justify-end">
-              <button
-                onClick={fetchJadwalPublik}
-                className="p-2.5 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition w-full md:w-auto flex items-center justify-center"
-                title="Refresh Data"
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+
+            <FilterSelect
+              label="Hari"
+              value={selectedHari}
+              options={HARI_OPTIONS}
+              onChange={setSelectedHari}
+            />
+
+            <FilterSelect
+              label="Ruangan"
+              value={selectedRuang}
+              options={['Semua', ...ruangList]}
+              onChange={setSelectedRuang}
+            />
+
+            <FilterSelect
+              label="Semester"
+              value={selectedSemester}
+              options={['Semua', ...semesterList]}
+              onChange={setSelectedSemester}
+            />
 
           </div>
-        </div>
 
-        {/* Status Error */}
+          <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+
+            <p className="text-sm text-slate-500">
+              Menampilkan{' '}
+              <span className="font-semibold text-slate-800">
+                {filteredJadwal.length}
+              </span>{' '}
+              dari {jadwalList.length} jadwal
+            </p>
+
+            <div className="flex flex-wrap gap-2">
+
+              {hasFilters && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                >
+                  <X size={15} />
+                  Reset
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => fetchJadwalPublik(true)}
+                disabled={refreshing}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw
+                  size={15}
+                  className={
+                    refreshing ? 'animate-spin' : ''
+                  }
+                />
+                Refresh
+              </button>
+
+            </div>
+          </div>
+        </section>
+
+        {/* JADWAL HARI INI */}
+        {!hasFilters && jadwalHariIni.length > 0 && (
+          <section className="mt-6">
+
+            <div className="mb-3 flex items-end justify-between gap-3">
+
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
+                  Fokus hari ini
+                </p>
+
+                <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-900">
+                  Jadwal Hari Ini
+                </h2>
+              </div>
+
+              <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                {jadwalHariIni.length} sesi
+              </span>
+
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+
+              {jadwalHariIni.slice(0, 6).map((item) => (
+                <PublicScheduleCard
+                  key={`today-${item.id}`}
+                  item={item}
+                  jadwalList={jadwalList}
+                />
+              ))}
+
+            </div>
+          </section>
+        )}
+
+        {/* ERROR */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
-            {error}
+          <div className="mt-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+
+            <AlertCircle
+              size={19}
+              className="mt-0.5 shrink-0"
+            />
+
+            <div className="min-w-0">
+              <p className="font-semibold">
+                Gagal memuat jadwal
+              </p>
+
+              <p className="mt-1 text-sm text-red-600">
+                {error}
+              </p>
+            </div>
+
           </div>
         )}
 
-        {/* Tabel Data Jadwal */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        {/* ALL SCHEDULE */}
+        <section className="mt-6">
+
+          <div className="mb-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Daftar jadwal
+            </p>
+
+            <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-900">
+              Semua Jadwal
+            </h2>
+          </div>
+
           {loading ? (
-            <div className="p-16 text-center text-slate-500 flex flex-col items-center justify-center">
-              <RefreshCw className="w-8 h-8 animate-spin text-indigo-600 mb-3" />
-              <p className="text-sm font-medium">Memuat jadwal kuliah terbaru...</p>
-            </div>
+            <LoadingState />
           ) : filteredJadwal.length === 0 ? (
-            <div className="p-16 text-center text-slate-500">
-              <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="font-semibold text-slate-700">Tidak ada jadwal ditemukan</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Coba sesuaikan kata kunci atau filter pencarian Anda.
-              </p>
-            </div>
+            <EmptyState
+              hasFilters={hasFilters}
+              onReset={resetFilters}
+            />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-600">
-                <thead className="bg-slate-50/80 text-slate-700 font-semibold uppercase text-xs border-b border-slate-200">
-                  <tr>
-                    <th className="px-6 py-4">Mata Kuliah / Kegiatan</th>
-                    <th className="px-6 py-4">Hari & Waktu</th>
-                    <th className="px-6 py-4">Ruangan</th>
-                    <th className="px-6 py-4">Semester</th>
-                    <th className="px-6 py-4">Status Ruang</th>
-                    <th className="px-6 py-4">Catatan</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredJadwal.map((item) => {
-                    const itemId = item.id || item.jadwal_id || 0;
-                    
-                    // Menggunakan helper terpusat
-                    const bentrokDetails = getBentrokDetails(item, jadwalList);
-                    const isBentrok = item.is_bentrok || (bentrokDetails && bentrokDetails.length > 0);
+            <>
+              {/* DESKTOP TABLE */}
+              <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:block">
 
-                    return (
-                      <tr
-                        key={itemId}
-                        className={`transition ${
-                          isBentrok ? 'bg-red-50/60 hover:bg-red-100/60 border-l-4 border-l-red-500' : 'hover:bg-slate-50/80'
-                        }`}
-                      >
-                        {/* Mata Kuliah */}
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2.5 font-semibold text-slate-900">
-                            <BookOpen className={`w-4 h-4 ${isBentrok ? 'text-red-600' : 'text-indigo-600'}`} />
-                            <div>
-                              <span>{getMkName(item)}</span>
-                              {item.kode_mk && (
-                                <span className="block text-xs font-normal text-slate-400">
-                                  Kode: {item.kode_mk}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </td>
+                <div className="overflow-x-auto">
 
-                        {/* Hari & Waktu */}
-                        <td className="px-6 py-4 space-y-1">
-                          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
-                            <Calendar className={`w-3.5 h-3.5 ${isBentrok ? 'text-red-500' : 'text-indigo-500'}`} />
-                            {item.hari}
-                          </div>
-                          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                            <Clock className={`w-3.5 h-3.5 ${isBentrok ? 'text-red-400' : 'text-indigo-400'}`} />
-                            {item.jam_mulai} - {item.jam_selesai}
-                          </div>
-                        </td>
+                  <table className="w-full min-w-245">
 
-                        {/* Ruangan */}
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-1.5 text-xs text-slate-700 font-medium">
-                            <MapPin className="w-3.5 h-3.5 text-red-500" />
-                            {getRuangName(item)}
-                          </div>
-                        </td>
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50/80 text-left">
 
-                        {/* Semester / Th. Ajaran */}
-                        <td className="px-6 py-4">
-                          <span className="inline-block bg-indigo-50 text-indigo-700 text-xs px-2.5 py-1 rounded-md font-medium border border-indigo-100">
-                            {item.tahun_ajaran && item.tipe_semester
-                              ? `${item.tahun_ajaran} (${item.tipe_semester})`
-                              : 'Akademik'}
-                          </span>
-                        </td>
+                        <TableHeader>
+                          Mata Kuliah
+                        </TableHeader>
 
-                        {/* Status Ruang & Bentrok */}
-                        <td className="px-6 py-4">
-                          {isBentrok ? (
-                            <div className="flex flex-col gap-1 items-start">
-                              <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs px-2.5 py-1 rounded-full font-bold border border-red-300 shadow-xs">
-                                <AlertTriangle className="w-3 h-3 text-red-600 shrink-0" />
-                                Bentrok
-                              </span>
-                              {bentrokDetails && bentrokDetails.length > 0 && (
-                                <div className="text-[11px] text-red-700 bg-red-100/80 p-2 rounded-lg border border-red-200 mt-1 max-w-xs space-y-1">
-                                  <span className="font-semibold block text-red-800">Bentrok dengan:</span>
-                                  {bentrokDetails.map((b, idx) => (
-                                    <div key={idx} className="leading-tight">
-                                      • <strong>{b.mk}</strong> ({b.ruang}) <br />
-                                      <span className="text-red-600 font-medium">⏱ {b.jam}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs px-2.5 py-1 rounded-full font-medium border border-emerald-200">
-                              Terjadwal
-                            </span>
-                          )}
-                        </td>
+                        <TableHeader>
+                          Hari & Waktu
+                        </TableHeader>
 
-                        {/* Catatan */}
-                        <td className="px-6 py-4 text-xs text-slate-500 max-w-xs truncate">
-                          {item.catatan || '-'}
-                        </td>
+                        <TableHeader>
+                          Ruangan
+                        </TableHeader>
+
+                        <TableHeader>
+                          Semester
+                        </TableHeader>
+
+                        <TableHeader>
+                          Status
+                        </TableHeader>
+
+                        <TableHeader>
+                          Catatan
+                        </TableHeader>
+
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+
+                      {filteredJadwal.map((item) => (
+                        <PublicScheduleRow
+                          key={item.id}
+                          item={item}
+                          jadwalList={jadwalList}
+                        />
+                      ))}
+
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* MOBILE / TABLET */}
+              <div className="grid gap-3 lg:hidden">
+
+                {filteredJadwal.map((item) => (
+                  <PublicScheduleCard
+                    key={item.id}
+                    item={item}
+                    jadwalList={jadwalList}
+                  />
+                ))}
+
+              </div>
+            </>
           )}
+        </section>
+      </div>
+    </main>
+  )
+}
+
+const StatCard = ({
+  label,
+  value,
+  icon,
+  danger = false,
+}: {
+  label: string
+  value: number
+  icon: React.ReactNode
+  danger?: boolean
+}) => (
+  <div
+    className={`rounded-xl border bg-white p-4 shadow-sm ${
+      danger
+        ? 'border-red-200'
+        : 'border-slate-200'
+    }`}
+  >
+    <div className="flex items-center justify-between gap-3">
+
+      <div>
+        <p className="text-xs font-medium text-slate-500">
+          {label}
+        </p>
+
+        <p
+          className={`mt-1 text-2xl font-bold tracking-tight ${
+            danger && value > 0
+              ? 'text-red-600'
+              : 'text-slate-900'
+          }`}
+        >
+          {value}
+        </p>
+      </div>
+
+      <div
+        className={`rounded-lg p-2.5 ${
+          danger && value > 0
+            ? 'bg-red-50 text-red-600'
+            : 'bg-indigo-50 text-indigo-600'
+        }`}
+      >
+        {icon}
+      </div>
+
+    </div>
+  </div>
+)
+
+const TableHeader = ({
+  children,
+}: {
+  children: React.ReactNode
+}) => (
+  <th className="px-5 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">
+    {children}
+  </th>
+)
+
+const FilterSelect = ({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: string[]
+  onChange: (value: string) => void
+}) => (
+  <label className="block">
+
+    <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+      {label}
+    </span>
+
+    <div className="relative">
+
+      <select
+        value={value}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+        className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 pr-10 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+      >
+        {options.map((option) => (
+          <option
+            key={option}
+            value={option}
+          >
+            {option}
+          </option>
+        ))}
+      </select>
+
+      <ChevronDown
+        size={16}
+        className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+      />
+
+    </div>
+  </label>
+)
+
+const PublicScheduleRow = ({
+  item,
+  jadwalList,
+}: {
+  item: JadwalPublicItem
+  jadwalList: JadwalPublicItem[]
+}) => {
+  const conflicts = getBentrokDetails(item, jadwalList) ?? []
+
+  const namaMk =
+    getMkName(item) || 'Mata Kuliah'
+
+  const namaRuang =
+    getRuangName(item) || '-'
+
+  return (
+    <tr className="group transition hover:bg-slate-50/70">
+
+      <td className="px-5 py-4 align-top">
+
+        <div className="flex items-start gap-3">
+
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-xs font-bold text-indigo-700">
+            {getInitials(namaMk)}
+          </div>
+
+          <div className="min-w-0">
+
+            <p className="font-semibold text-slate-900">
+              {namaMk}
+            </p>
+
+            {item.kode_mk && (
+              <p className="mt-1 text-xs font-medium text-slate-400">
+                {item.kode_mk}
+              </p>
+            )}
+
+          </div>
+        </div>
+      </td>
+
+      <td className="px-5 py-4 align-top">
+
+        <div className="flex items-start gap-2">
+
+          <Clock3
+            size={16}
+            className="mt-0.5 shrink-0 text-slate-400"
+          />
+
+          <div>
+
+            <p className="font-semibold text-slate-800">
+              {item.hari || '-'}
+            </p>
+
+            <p className="mt-1 text-sm text-slate-500">
+              {formatTime(item.jam_mulai)} –{' '}
+              {formatTime(item.jam_selesai)}
+            </p>
+
+          </div>
+        </div>
+      </td>
+
+      <td className="px-5 py-4 align-top">
+
+        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+
+          <DoorOpen
+            size={16}
+            className="text-slate-400"
+          />
+
+          {namaRuang}
+
+        </div>
+      </td>
+
+      <td className="px-5 py-4 align-top">
+
+        <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+          {getSemesterLabel(item)}
+        </span>
+
+      </td>
+
+      <td className="px-5 py-4 align-top">
+
+        {conflicts.length > 0 ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+
+            <AlertCircle size={13} />
+
+            Bentrok
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+
+            Terjadwal
+          </span>
+        )}
+
+      </td>
+
+      <td className="max-w-55 px-5 py-4 align-top">
+
+        <p className="text-sm leading-5 text-slate-500">
+          {item.catatan || '-'}
+        </p>
+
+        {conflicts.length > 0 && (
+          <p className="mt-2 text-xs font-medium text-red-600">
+            {conflicts.length} jadwal memiliki waktu
+            atau ruangan yang beririsan.
+          </p>
+        )}
+
+      </td>
+    </tr>
+  )
+}
+
+const PublicScheduleCard = ({
+  item,
+  jadwalList,
+}: {
+  item: JadwalPublicItem
+  jadwalList: JadwalPublicItem[]
+}) => {
+  const conflicts = getBentrokDetails(item, jadwalList) ?? []
+
+  const namaMk =
+    getMkName(item) || 'Mata Kuliah'
+
+  const namaRuang =
+    getRuangName(item) || '-'
+
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md">
+
+      <div className="flex items-start gap-3">
+
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-xs font-bold text-indigo-700">
+          {getInitials(namaMk)}
+        </div>
+
+        <div className="min-w-0 flex-1">
+
+          <div className="flex flex-wrap items-start justify-between gap-2">
+
+            <div className="min-w-0">
+
+              <h3 className="font-semibold leading-5 text-slate-900">
+                {namaMk}
+              </h3>
+
+              {item.kode_mk && (
+                <p className="mt-1 text-xs font-medium text-slate-400">
+                  {item.kode_mk}
+                </p>
+              )}
+
+            </div>
+
+            {conflicts.length > 0 ? (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700">
+
+                <AlertCircle size={12} />
+
+                Bentrok
+              </span>
+            ) : (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+
+                Terjadwal
+              </span>
+            )}
+
+          </div>
         </div>
       </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+
+        <div className="rounded-xl bg-slate-50 p-3">
+
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Hari
+          </p>
+
+          <p className="mt-1 text-sm font-semibold text-slate-800">
+            {item.hari || '-'}
+          </p>
+
+        </div>
+
+        <div className="rounded-xl bg-slate-50 p-3">
+
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Waktu
+          </p>
+
+          <p className="mt-1 text-sm font-semibold text-slate-800">
+            {formatTime(item.jam_mulai)} –{' '}
+            {formatTime(item.jam_selesai)}
+          </p>
+
+        </div>
+
+      </div>
+
+      <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-100 px-3 py-2.5 text-sm text-slate-600">
+
+        <DoorOpen
+          size={16}
+          className="shrink-0 text-slate-400"
+        />
+
+        <span className="truncate">
+          {namaRuang}
+        </span>
+
+      </div>
+
+      <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-100 px-3 py-2.5 text-xs text-slate-500">
+
+        <GraduationCap
+          size={15}
+          className="shrink-0 text-slate-400"
+        />
+
+        <span className="truncate">
+          {getSemesterLabel(item)}
+        </span>
+
+      </div>
+
+      {item.catatan && (
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <p className="text-xs leading-5 text-slate-500">
+            {item.catatan}
+          </p>
+        </div>
+      )}
+
+      {conflicts.length > 0 && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 p-3 text-xs leading-5 text-red-700">
+
+          <AlertCircle
+            size={14}
+            className="mt-0.5 shrink-0"
+          />
+
+          <span>
+            Jadwal ini memiliki {conflicts.length}{' '}
+            potensi bentrok dengan jadwal lain.
+          </span>
+
+        </div>
+      )}
+
+    </article>
+  )
+}
+
+const LoadingState = () => (
+  <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+
+    <div className="space-y-4">
+
+      {[1, 2, 3].map((item) => (
+        <div
+          key={item}
+          className="animate-pulse rounded-xl border border-slate-100 p-4"
+        >
+
+          <div className="flex gap-3">
+
+            <div className="h-11 w-11 rounded-xl bg-slate-100" />
+
+            <div className="flex-1 space-y-2">
+
+              <div className="h-4 w-1/3 rounded bg-slate-100" />
+
+              <div className="h-3 w-1/4 rounded bg-slate-100" />
+
+            </div>
+          </div>
+
+          <div className="mt-4 h-12 rounded-xl bg-slate-100" />
+
+        </div>
+      ))}
+
     </div>
-  );
-};
+  </div>
+)
+
+const EmptyState = ({
+  hasFilters,
+  onReset,
+}: {
+  hasFilters: boolean
+  onReset: () => void
+}) => (
+  <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center shadow-sm">
+
+    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+      <Search size={24} />
+    </div>
+
+    <h3 className="mt-4 text-lg font-bold text-slate-900">
+      Jadwal tidak ditemukan
+    </h3>
+
+    <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+      {hasFilters
+        ? 'Coba ubah kata kunci atau filter yang digunakan untuk menemukan jadwal lainnya.'
+        : 'Belum ada jadwal yang tersedia untuk ditampilkan.'}
+    </p>
+
+    {hasFilters && (
+      <button
+        type="button"
+        onClick={onReset}
+        className="mt-5 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+      >
+        <RefreshCw size={15} />
+        Reset Filter
+      </button>
+    )}
+
+  </div>
+)

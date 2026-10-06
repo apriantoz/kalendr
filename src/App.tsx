@@ -6,7 +6,7 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { JadwalTable } from "@/pages/JadwalTable";
 import { MasterSemesterPage } from "@/pages/MasterSemesterPage";
 import { MasterDataPage } from "@/pages/MasterDataPage";
-import { Navbar } from "@/components/Navbar";
+import  Navbar  from "@/components/Navbar";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2 } from "lucide-react";
 import LoginPage from "@/pages/LoginPage";

@@ -1,24 +1,41 @@
 // src/pages/MasterSemesterPage.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { type MasterSemester } from '@/types/master';
-import { Plus, Edit, Trash2, CheckCircle, XCircle, Loader2, RefreshCw } from 'lucide-react';
+import {
+  Plus,
+  Edit,
+  Trash2,
+  CheckCircle2,
+  Circle,
+  Loader2,
+  RefreshCw,
+  CalendarDays,
+  Search,
+  Sparkles,
+  GraduationCap,
+  X,
+  Info,
+} from 'lucide-react';
 
 export const MasterSemesterPage: React.FC = () => {
   const { isAdmin } = useAuth();
+
   const [list, setList] = useState<MasterSemester[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  // State terpisah untuk menyimpan input Tahun Awal saja (misal: 2024)
-  const [tahunAwal, setTahunAwal] = useState<number | string>(new Date().getFullYear());
+  const currentYear = new Date().getFullYear();
+
+  const [tahunAwal, setTahunAwal] = useState<number | string>(currentYear);
   const [formData, setFormData] = useState({
     tipe_semester: 'Ganjil',
-    tahun_ajaran: `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`,
+    tahun_ajaran: `${currentYear}/${currentYear + 1}`,
     is_active: false,
   });
 
@@ -26,11 +43,16 @@ export const MasterSemesterPage: React.FC = () => {
 
   const fetchData = async () => {
     setLoading(true);
+
     const { data, error } = await supabase
       .from('master_semester')
       .select('*')
       .order('id', { ascending: false });
-    if (!error) setList(data || []);
+
+    if (!error) {
+      setList(data || []);
+    }
+
     setLoading(false);
   };
 
@@ -38,12 +60,34 @@ export const MasterSemesterPage: React.FC = () => {
     fetchData();
   }, []);
 
+  const filteredList = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+
+    if (!keyword) return list;
+
+    return list.filter(
+      (item) =>
+        item.tipe_semester?.toLowerCase().includes(keyword) ||
+        item.tahun_ajaran?.toLowerCase().includes(keyword)
+    );
+  }, [list, search]);
+
+  const activeSemester = useMemo(
+    () => list.find((item) => item.is_active),
+    [list]
+  );
+
+  const ganjilCount = list.filter((item) => item.tipe_semester === 'Ganjil').length;
+  const genapCount = list.filter((item) => item.tipe_semester === 'Genap').length;
+
   const handleToggleActive = async (id: number, currentStatus: boolean) => {
     if (!isAdmin) return;
-    
-    // Jika diaktifkan, matikan semester aktif lainnya lebih dulu
+
     if (!currentStatus) {
-      await supabase.from('master_semester').update({ is_active: false }).neq('id', id);
+      await supabase
+        .from('master_semester')
+        .update({ is_active: false })
+        .neq('id', id);
     }
 
     const { error } = await supabase
@@ -51,13 +95,16 @@ export const MasterSemesterPage: React.FC = () => {
       .update({ is_active: !currentStatus })
       .eq('id', id);
 
-    if (!error) fetchData();
+    if (!error) {
+      fetchData();
+    }
   };
 
-  // Helper merubah tahun awal dan otomatis memperbarui string tahun_ajaran (YYYY/YYYY+1)
   const handleTahunAwalChange = (year: number | string) => {
     setTahunAwal(year);
+
     const numYear = Number(year);
+
     if (!isNaN(numYear) && numYear > 2000 && numYear < 2100) {
       setFormData((prev) => ({
         ...prev,
@@ -71,10 +118,43 @@ export const MasterSemesterPage: React.FC = () => {
     }
   };
 
+  const resetForm = () => {
+    const year = new Date().getFullYear();
+
+    setIsEditing(false);
+    setSelectedId(null);
+    setTahunAwal(year);
+    setFormData({
+      tipe_semester: 'Ganjil',
+      tahun_ajaran: `${year}/${year + 1}`,
+      is_active: false,
+    });
+  };
+
+  const openAddModal = () => {
+    resetForm();
+    setShowModal(true);
+  };
+
+  const openEditModal = (item: MasterSemester) => {
+    const initialYear = item.tahun_ajaran
+      ? item.tahun_ajaran.split('/')[0]
+      : new Date().getFullYear();
+
+    setIsEditing(true);
+    setSelectedId(item.id);
+    setTahunAwal(initialYear);
+    setFormData({
+      tipe_semester: item.tipe_semester,
+      tahun_ajaran: item.tahun_ajaran,
+      is_active: item.is_active,
+    });
+    setShowModal(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validasi sederhana tahun_ajaran
+
     if (!formData.tahun_ajaran) {
       alert('Tahun awal tidak valid!');
       return;
@@ -82,186 +162,630 @@ export const MasterSemesterPage: React.FC = () => {
 
     setSubmitting(true);
 
-    if (formData.is_active) {
-      await supabase.from('master_semester').update({ is_active: false }).neq('id', selectedId || 0);
-    }
+    try {
+      if (formData.is_active) {
+        await supabase
+          .from('master_semester')
+          .update({ is_active: false })
+          .neq('id', selectedId || 0);
+      }
 
-    if (isEditing && selectedId) {
-      await supabase.from('master_semester').update(formData).eq('id', selectedId);
-    } else {
-      await supabase.from('master_semester').insert([formData]);
-    }
+      if (isEditing && selectedId) {
+        await supabase
+          .from('master_semester')
+          .update(formData)
+          .eq('id', selectedId);
+      } else {
+        await supabase.from('master_semester').insert([formData]);
+      }
 
-    setSubmitting(false);
-    setShowModal(false);
-    fetchData();
+      setShowModal(false);
+      await fetchData();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Hapus master semester ini?')) return;
+
     await supabase.from('master_semester').delete().eq('id', id);
     fetchData();
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Master Semester Akademik</h1>
-          <p className="text-sm text-gray-500">Kelola semester aktif perkuliahan (Ganjil/Genap & Tahun Ajaran).</p>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={fetchData} className="p-2 border rounded-lg hover:bg-gray-50 bg-white">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-          {isAdmin && (
+    <div className="min-h-full bg-slate-50/60">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        {/* Header */}
+        <div className="mb-7 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50">
+                <GraduationCap className="h-4 w-4" />
+              </span>
+              Administrasi Akademik
+            </div>
+
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+              Master Semester
+            </h1>
+
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+              Atur periode semester dan tentukan semester yang sedang aktif untuk
+              operasional akademik.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                const currentY = new Date().getFullYear();
-                setIsEditing(false);
-                setSelectedId(null);
-                setTahunAwal(currentY);
-                setFormData({
-                  tipe_semester: 'Ganjil',
-                  tahun_ajaran: `${currentY}/${currentY + 1}`,
-                  is_active: false,
-                });
-                setShowModal(true);
-              }}
-              className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
+              type="button"
+              onClick={fetchData}
+              title="Refresh data"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
             >
-              <Plus className="w-4 h-4" /> Tambah Semester
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={openAddModal}
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm shadow-indigo-200 transition hover:bg-indigo-700 active:scale-[0.98]"
+              >
+                <Plus className="h-4 w-4" />
+                Tambah Semester
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Summary cards */}
+        <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-600 to-indigo-700 p-5 text-white shadow-sm">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-medium text-indigo-100">Semester Aktif</p>
+                <p className="mt-2 text-xl font-bold">
+                  {activeSemester?.tipe_semester || 'Belum ada'}
+                </p>
+                <p className="mt-1 text-sm text-indigo-100">
+                  {activeSemester?.tahun_ajaran || 'Belum ditentukan'}
+                </p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
+                <Sparkles className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-500">Total Semester</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">{list.length}</p>
+                <p className="mt-1 text-xs text-slate-400">Periode tersimpan</p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                <CalendarDays className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-500">Semester Ganjil</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">{ganjilCount}</p>
+                <p className="mt-1 text-xs text-slate-400">Periode tersimpan</p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                <Circle className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-500">Semester Genap</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">{genapCount}</p>
+                <p className="mt-1 text-xs text-slate-400">Periode tersimpan</p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                <CheckCircle2 className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Active semester highlight */}
+        <div className="mb-6 overflow-hidden rounded-2xl border border-indigo-100 bg-white shadow-sm">
+          <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                <CalendarDays className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
+                  Periode Perkuliahan Saat Ini
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <span className="text-lg font-bold text-slate-900">
+                    {activeSemester
+                      ? `${activeSemester.tipe_semester} · ${activeSemester.tahun_ajaran}`
+                      : 'Belum ada semester aktif'}
+                  </span>
+                  {activeSemester && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      AKTIF
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+              <span>
+                Hanya satu semester yang dapat menjadi semester aktif pada satu waktu.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Main table */}
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Daftar Semester</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Kelola periode akademik yang tersedia di sistem.
+              </p>
+            </div>
+
+            <div className="relative w-full sm:w-72">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cari semester atau tahun..."
+                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-9 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex min-h-[320px] items-center justify-center">
+              <div className="text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50">
+                  <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+                </div>
+                <p className="mt-3 text-sm font-medium text-slate-700">
+                  Memuat data semester...
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Mohon tunggu sebentar.
+                </p>
+              </div>
+            </div>
+          ) : filteredList.length === 0 ? (
+            <div className="flex min-h-[320px] flex-col items-center justify-center px-6 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                <CalendarDays className="h-7 w-7" />
+              </div>
+
+              <h3 className="mt-4 text-sm font-bold text-slate-800">
+                {search ? 'Semester tidak ditemukan' : 'Belum ada master semester'}
+              </h3>
+
+              <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">
+                {search
+                  ? 'Coba gunakan kata kunci atau tahun ajaran yang berbeda.'
+                  : 'Tambahkan periode semester pertama untuk mulai mengatur kalender akademik.'}
+              </p>
+
+              {!search && isAdmin && (
+                <button
+                  type="button"
+                  onClick={openAddModal}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+                >
+                  <Plus className="h-4 w-4" />
+                  Tambah Semester
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Desktop */}
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/70">
+                      <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        Semester
+                      </th>
+                      <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        Tahun Ajaran
+                      </th>
+                      <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        Status
+                      </th>
+                      {isAdmin && (
+                        <th className="px-5 py-3.5 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                          Aksi
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredList.map((item) => (
+                      <tr
+                        key={item.id}
+                        className="group transition hover:bg-slate-50/70"
+                      >
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                                item.tipe_semester === 'Ganjil'
+                                  ? 'bg-amber-50 text-amber-600'
+                                  : 'bg-emerald-50 text-emerald-600'
+                              }`}
+                            >
+                              <CalendarDays className="h-4.5 w-4.5" />
+                            </div>
+
+                            <div>
+                              <p className="font-semibold text-slate-900">
+                                Semester {item.tipe_semester}
+                              </p>
+                              <p className="mt-0.5 text-xs text-slate-400">
+                                ID #{item.id}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <span className="inline-flex rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700">
+                            {item.tahun_ajaran}
+                          </span>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleToggleActive(item.id, item.is_active)
+                            }
+                            disabled={!isAdmin}
+                            title={
+                              isAdmin
+                                ? item.is_active
+                                  ? 'Klik untuk menonaktifkan'
+                                  : 'Klik untuk mengaktifkan'
+                                : 'Hanya admin yang dapat mengubah status'
+                            }
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                              item.is_active
+                                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            } ${!isAdmin ? 'cursor-default' : ''}`}
+                          >
+                            {item.is_active ? (
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                            ) : (
+                              <Circle className="h-3.5 w-3.5" />
+                            )}
+                            {item.is_active ? 'Aktif' : 'Tidak Aktif'}
+                          </button>
+                        </td>
+
+                        {isAdmin && (
+                          <td className="px-5 py-4">
+                            <div className="flex justify-end gap-1.5 opacity-80 transition group-hover:opacity-100">
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(item)}
+                                title="Edit semester"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 transition hover:bg-indigo-50"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(item.id)}
+                                title="Hapus semester"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 transition hover:bg-rose-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile */}
+              <div className="divide-y divide-slate-100 md:hidden">
+                {filteredList.map((item) => (
+                  <div key={item.id} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                            item.tipe_semester === 'Ganjil'
+                              ? 'bg-amber-50 text-amber-600'
+                              : 'bg-emerald-50 text-emerald-600'
+                          }`}
+                        >
+                          <CalendarDays className="h-4 w-4" />
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-slate-900">
+                            Semester {item.tipe_semester}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {item.tahun_ajaran}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleToggleActive(item.id, item.is_active)
+                        }
+                        disabled={!isAdmin}
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                          item.is_active
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {item.is_active ? 'AKTIF' : 'NONAKTIF'}
+                      </button>
+                    </div>
+
+                    {isAdmin && (
+                      <div className="mt-3 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(item)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700"
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item.id)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Hapus
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {!loading && filteredList.length > 0 && (
+            <div className="border-t border-slate-100 bg-slate-50/50 px-5 py-3">
+              <p className="text-xs text-slate-400">
+                Menampilkan <span className="font-semibold text-slate-600">{filteredList.length}</span>{' '}
+                dari <span className="font-semibold text-slate-600">{list.length}</span> semester
+              </p>
+            </div>
           )}
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        {loading ? (
-          <div className="p-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600" /></div>
-        ) : (
-          <table className="w-full text-left text-sm text-gray-600">
-            <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-700 border-b">
-              <tr>
-                <th className="px-6 py-4">Tipe Semester</th>
-                <th className="px-6 py-4">Tahun Ajaran</th>
-                <th className="px-6 py-4">Status Aktif</th>
-                {isAdmin && <th className="px-6 py-4 text-center">Aksi</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {list.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-semibold text-gray-900">{item.tipe_semester}</td>
-                  <td className="px-6 py-4">{item.tahun_ajaran}</td>
-                  <td className="px-6 py-4">
-                    <button
-                      onClick={() => handleToggleActive(item.id, item.is_active)}
-                      disabled={!isAdmin}
-                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-                        item.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                      }`}
-                    >
-                      {item.is_active ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                      {item.is_active ? 'Aktif' : 'Tidak Aktif'}
-                    </button>
-                  </td>
-                  {isAdmin && (
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex justify-center gap-2">
-                        <button
-                          onClick={() => {
-                            setIsEditing(true);
-                            setSelectedId(item.id);
-                            
-                            // Ekstrak tahun awal dari string '2024/2025' -> 2024
-                            const initialYear = item.tahun_ajaran ? item.tahun_ajaran.split('/')[0] : new Date().getFullYear();
-                            setTahunAwal(initialYear);
-                            setFormData({
-                              tipe_semester: item.tipe_semester,
-                              tahun_ajaran: item.tahun_ajaran,
-                              is_active: item.is_active,
-                            });
-                            setShowModal(true);
-                          }}
-                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDelete(item.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Modal Form */}
+      {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold mb-4">{isEditing ? 'Edit Master Semester' : 'Tambah Master Semester'}</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold mb-1">Tipe Semester</label>
-                <select
-                  value={formData.tipe_semester}
-                  onChange={(e) => setFormData({ ...formData, tipe_semester: e.target.value })}
-                  className="w-full text-sm border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !submitting) {
+              setShowModal(false);
+            }
+          }}
+        >
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-slate-100 px-6 py-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                    {isEditing ? (
+                      <Edit className="h-4 w-4" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                  </div>
+
+                  <h2 className="text-lg font-bold text-slate-900">
+                    {isEditing ? 'Edit Master Semester' : 'Tambah Master Semester'}
+                  </h2>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Tentukan tipe semester, tahun ajaran, dan status aktif.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => !submitting && setShowModal(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                 >
-                  <option value="Ganjil">Ganjil</option>
-                  <option value="Genap">Genap</option>
-                </select>
+                  <X className="h-4 w-4" />
+                </button>
               </div>
+            </div>
 
-              {/* Input Tahun Awal + Preview Hasil Otomatis */}
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSubmit}>
+              <div className="space-y-5 px-6 py-6">
                 <div>
-                  <label className="block text-xs font-semibold mb-1">Tahun Awal</label>
-                  <input
-                    type="number"
-                    required
-                    min={2000}
-                    max={2099}
-                    placeholder="Contoh: 2024"
-                    value={tahunAwal}
-                    onChange={(e) => handleTahunAwalChange(e.target.value)}
-                    className="w-full text-sm border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  />
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Tipe Semester
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {['Ganjil', 'Genap'].map((type) => {
+                      const selected = formData.tipe_semester === type;
+
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() =>
+                            setFormData({
+                              ...formData,
+                              tipe_semester: type,
+                            })
+                          }
+                          className={`rounded-xl border p-3 text-left transition ${
+                            selected
+                              ? 'border-indigo-300 bg-indigo-50 ring-2 ring-indigo-100'
+                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span
+                              className={`text-sm font-bold ${
+                                selected
+                                  ? 'text-indigo-700'
+                                  : 'text-slate-700'
+                              }`}
+                            >
+                              {type}
+                            </span>
+
+                            <span
+                              className={`h-2.5 w-2.5 rounded-full ${
+                                type === 'Ganjil'
+                                  ? 'bg-amber-400'
+                                  : 'bg-emerald-400'
+                              }`}
+                            />
+                          </div>
+
+                          <p className="mt-1 text-[11px] text-slate-400">
+                            Semester {type.toLowerCase()}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold mb-1 text-gray-500">Tahun Ajaran (Otomatis)</label>
-                  <input
-                    type="text"
-                    disabled
-                    value={formData.tahun_ajaran}
-                    className="w-full text-sm border bg-gray-100 rounded-lg p-2 font-bold text-indigo-600 cursor-not-allowed"
-                  />
+                  <label
+                    htmlFor="tahun_awal"
+                    className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500"
+                  >
+                    Tahun Ajaran
+                  </label>
+
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                    <div className="relative">
+                      <input
+                        id="tahun_awal"
+                        type="number"
+                        required
+                        min={2000}
+                        max={2099}
+                        placeholder="2024"
+                        value={tahunAwal}
+                        onChange={(e) =>
+                          handleTahunAwalChange(e.target.value)
+                        }
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+                      />
+                    </div>
+
+                    <span className="text-sm font-bold text-slate-300">/</span>
+
+                    <div className="flex h-11 items-center rounded-xl border border-indigo-100 bg-indigo-50 px-3">
+                      <span className="text-sm font-bold text-indigo-700">
+                        {formData.tahun_ajaran
+                          ? formData.tahun_ajaran.split('/')[1] || '—'
+                          : '—'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    Tahun berikutnya dibuat otomatis. Contoh: 2024 → 2024/2025.
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <label className="flex cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      id="is_active"
+                      checked={formData.is_active}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          is_active: e.target.checked,
+                        })
+                      }
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-800">
+                        Set sebagai Semester Aktif
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-5 text-slate-500">
+                        Semester aktif akan digunakan sebagai periode utama
+                        operasional akademik.
+                      </span>
+                    </span>
+                  </label>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                  className="rounded text-indigo-600 focus:ring-indigo-500"
-                />
-                <label htmlFor="is_active" className="text-sm cursor-pointer select-none">Set sebagai Semester Aktif</label>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t">
-                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+              <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  disabled={submitting}
+                  className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 disabled:opacity-50"
+                >
                   Batal
                 </button>
-                <button type="submit" disabled={submitting} className="px-4 py-2 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
-                  {submitting ? 'Menyimpan...' : 'Simpan'}
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="inline-flex min-w-24 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {submitting ? 'Menyimpan...' : isEditing ? 'Simpan Perubahan' : 'Simpan Semester'}
                 </button>
               </div>
             </form>

@@ -2,26 +2,30 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { 
-  getBentrokDetails, 
-  getMkName, 
-  getRuangName, 
-  type ScheduleItem 
+import {
+  getBentrokDetails,
+  getMkName,
+  getRuangName,
+  type ScheduleItem
 } from '@/utils/scheduleHelpers';
-import { 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  BookOpen, 
-  Loader2, 
-  RefreshCw, 
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Calendar,
+  Clock,
+  MapPin,
+  BookOpen,
+  Loader2,
+  RefreshCw,
   AlertTriangle,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  CheckCircle2,
+  X,
+  Save,
+  FileText,
 } from 'lucide-react';
 
 export interface JadwalItem extends ScheduleItem {
@@ -47,19 +51,20 @@ export const JadwalTable: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // State Sorting
+  // Sorting
   const [sortField, setSortField] = useState<SortField>('hari');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
-  // State Option untuk Select Form
+  // Master data
   const [mkOptions, setMkOptions] = useState<DropdownOption[]>([]);
   const [ruangOptions, setRuangOptions] = useState<DropdownOption[]>([]);
   const [semesterOptions, setSemesterOptions] = useState<DropdownOption[]>([]);
 
-  // State Modal Form
+  // Modal
   const [showModal, setShowModal] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+
   const [formData, setFormData] = useState({
     mk_id: '',
     ruang_id: '',
@@ -72,26 +77,29 @@ export const JadwalTable: React.FC = () => {
 
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  // Helper Ambil Nama Semester
+  // Helper semester
   const getSemesterName = (item: JadwalItem) => {
     if (item.tahun_ajaran && item.tipe_semester) {
       return `${item.tahun_ajaran} (${item.tipe_semester})`;
     }
-    return item.master_semester_id ? `Semester #${item.master_semester_id}` : '-';
+
+    return item.master_semester_id
+      ? `Semester #${item.master_semester_id}`
+      : '-';
   };
 
-  // Urutan Hari untuk Sorting Logis (Senin - Minggu)
+  // Urutan hari
   const hariUrutan: Record<string, number> = {
-    'Senin': 1,
-    'Selasa': 2,
-    'Rabu': 3,
-    'Kamis': 4,
-    'Jumat': 5,
-    'Sabtu': 6,
-    'Minggu': 7,
+    Senin: 1,
+    Selasa: 2,
+    Rabu: 3,
+    Kamis: 4,
+    Jumat: 5,
+    Sabtu: 6,
+    Minggu: 7,
   };
 
-  // Fetch Data Master (MK, Ruang, Semester) untuk Dropdown Form Input
+  // Fetch master data
   const fetchMasterData = async () => {
     try {
       const [mkRes, ruangRes, semRes] = await Promise.all([
@@ -101,41 +109,52 @@ export const JadwalTable: React.FC = () => {
       ]);
 
       if (mkRes.data) {
-        setMkOptions(mkRes.data.map((item: any) => ({
-          id: item.id,
-          nama: item.nama_mk || item.nama || `MK ID ${item.id}`,
-        })));
+        setMkOptions(
+          mkRes.data.map((item: any) => ({
+            id: item.id,
+            nama: item.nama_mk || item.nama || `MK ID ${item.id}`,
+          }))
+        );
       }
 
       if (ruangRes.data) {
-        setRuangOptions(ruangRes.data.map((item: any) => ({
-          id: item.id,
-          nama: item.nama_ruang || item.nama || `Ruang ID ${item.id}`,
-        })));
+        setRuangOptions(
+          ruangRes.data.map((item: any) => ({
+            id: item.id,
+            nama: item.nama_ruang || item.nama || `Ruang ID ${item.id}`,
+          }))
+        );
       }
 
       if (semRes.data) {
-        setSemesterOptions(semRes.data.map((item: any) => ({
-          id: item.id,
-          nama: item.nama_semester || item.semester || item.nama || `Semester ID ${item.id}`,
-        })));
+        setSemesterOptions(
+          semRes.data.map((item: any) => ({
+            id: item.id,
+            nama:
+              item.nama_semester ||
+              item.semester ||
+              item.nama ||
+              `Semester ID ${item.id}`,
+          }))
+        );
       }
     } catch (err) {
       console.error('Error fetching master data:', err);
     }
   };
 
-  // Fetch Data Jadwal dari View view_jadwal_detail
+  // Fetch jadwal
   const fetchJadwal = async () => {
     setLoading(true);
     setError(null);
+
     try {
       const { data, error } = await supabase
         .from('view_jadwal_detail')
         .select('*');
 
       if (error) throw error;
-      
+
       const formattedData = (data || []).map((item: any) => ({
         ...item,
         id: item.jadwal_id || item.id,
@@ -155,7 +174,7 @@ export const JadwalTable: React.FC = () => {
     fetchMasterData();
   }, []);
 
-  // Handle Trigger Sorting Header Click
+  // Sorting
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -165,7 +184,6 @@ export const JadwalTable: React.FC = () => {
     }
   };
 
-  // Data yang sudah di-sort menggunakan useMemo
   const sortedJadwalList = useMemo(() => {
     return [...jadwalList].sort((a, b) => {
       let valA: any = '';
@@ -190,32 +208,41 @@ export const JadwalTable: React.FC = () => {
 
       if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
       if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+
       return 0;
     });
   }, [jadwalList, sortField, sortOrder]);
 
-  // Open Modal Tambah
+  // Tambah
   const handleOpenAddModal = () => {
     setIsEditing(false);
     setSelectedId(null);
+
     setFormData({
       mk_id: mkOptions[0]?.id ? String(mkOptions[0].id) : '',
       ruang_id: ruangOptions[0]?.id ? String(ruangOptions[0].id) : '',
-      master_semester_id: semesterOptions[0]?.id ? String(semesterOptions[0].id) : '',
+      master_semester_id: semesterOptions[0]?.id
+        ? String(semesterOptions[0].id)
+        : '',
       hari: 'Senin',
       jam_mulai: '08:00',
       jam_selesai: '10:00',
       catatan: '',
     });
+
     setShowModal(true);
   };
 
-  // Open Modal Edit
+  // Edit
   const handleOpenEditModal = (item: JadwalItem) => {
     setIsEditing(true);
+
     const itemId = item.id || item.jadwal_id;
+
     if (!itemId) return;
+
     setSelectedId(itemId);
+
     setFormData({
       mk_id: String(item.mk_id),
       ruang_id: String(item.ruang_id),
@@ -225,10 +252,11 @@ export const JadwalTable: React.FC = () => {
       jam_selesai: item.jam_selesai || '10:00',
       catatan: item.catatan || '',
     });
+
     setShowModal(true);
   };
 
-  // Handle Form Submit
+  // Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -268,382 +296,865 @@ export const JadwalTable: React.FC = () => {
     }
   };
 
-  // Handle Delete
+  // Delete
   const handleDelete = async (id: number) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus jadwal ini?')) return;
+    if (!window.confirm('Apakah Anda yakin ingin menghapus jadwal ini?')) {
+      return;
+    }
 
     try {
-      const { error } = await supabase.from('jadwal').delete().eq('id', id);
+      const { error } = await supabase
+        .from('jadwal')
+        .delete()
+        .eq('id', id);
+
       if (error) throw error;
+
       fetchJadwal();
     } catch (err: any) {
       alert('Gagal menghapus data: ' + err.message);
     }
   };
 
-  // Menghitung statistik bentrok
+  // Statistik bentrok
   const totalBentrok = jadwalList.filter((item) => {
     const details = getBentrokDetails(item, jadwalList);
+
     return item.is_bentrok || (details && details.length > 0);
   }).length;
 
-  // Helper render ikon sorting di header
+  const totalAman = Math.max(jadwalList.length - totalBentrok, 0);
+
+  // Sorting icon
   const renderSortIcon = (field: SortField) => {
     if (sortField !== field) {
-      return <ArrowUpDown className="w-3.5 h-3.5 text-gray-400 inline ml-1 transition opacity-0 group-hover:opacity-100" />;
+      return (
+        <ArrowUpDown className="ml-1 inline h-3.5 w-3.5 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100" />
+      );
     }
+
     return sortOrder === 'asc' ? (
-      <ArrowUp className="w-3.5 h-3.5 text-indigo-600 inline ml-1" />
+      <ArrowUp className="ml-1 inline h-3.5 w-3.5 text-indigo-600" />
     ) : (
-      <ArrowDown className="w-3.5 h-3.5 text-indigo-600 inline ml-1" />
+      <ArrowDown className="ml-1 inline h-3.5 w-3.5 text-indigo-600" />
     );
   };
 
+  const inputClass =
+    'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10';
+
+  const labelClass =
+    'mb-1.5 block text-xs font-semibold text-slate-600';
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-gray-900">Kelola Jadwal Perkuliahan</h1>
-            {totalBentrok > 0 && (
-              <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs px-2.5 py-1 rounded-full font-semibold border border-red-200">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                {totalBentrok} Jadwal Bentrok
-              </span>
-            )}
+    <div className="min-h-full bg-slate-50/60">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+
+        {/* =====================================================
+            HEADER
+        ====================================================== */}
+        <div className="mb-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
+                  <Calendar className="h-4 w-4" />
+                </span>
+
+                <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
+                  Manajemen Akademik
+                </span>
+              </div>
+
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                Kelola Jadwal Perkuliahan
+              </h1>
+
+              <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-500">
+                Kelola jadwal perkuliahan, ruangan, waktu, semester,
+                serta pantau potensi bentrok secara langsung.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={fetchJadwal}
+                disabled={loading}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Refresh Data"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+                />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={handleOpenAddModal}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition hover:bg-indigo-700 hover:shadow-md active:scale-[0.98]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Tambah Jadwal
+                </button>
+              )}
+            </div>
           </div>
-          <p className="text-sm text-gray-500">
-            Daftar perkuliahan beserta ruangan, alokasi waktu, dan pendeteksi bentrok.
-          </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={fetchJadwal}
-            className="p-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition shadow-sm"
-            title="Refresh Data"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+        {/* =====================================================
+            STATISTICS
+        ====================================================== */}
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
 
-          {isAdmin && (
-            <button
-              onClick={handleOpenAddModal}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Tambah Jadwal
-            </button>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-500">
+                  Total Jadwal
+                </p>
+
+                <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
+                  {jadwalList.length}
+                </p>
+              </div>
+
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                <Calendar className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-500">
+                  Jadwal Aman
+                </p>
+
+                <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
+                  {totalAman}
+                </p>
+              </div>
+
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                <CheckCircle2 className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+
+          <div
+            className={`rounded-2xl border bg-white p-4 shadow-sm ${
+              totalBentrok > 0
+                ? 'border-red-200'
+                : 'border-slate-200'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-500">
+                  Jadwal Bentrok
+                </p>
+
+                <p
+                  className={`mt-1 text-2xl font-bold tracking-tight ${
+                    totalBentrok > 0
+                      ? 'text-red-600'
+                      : 'text-slate-900'
+                  }`}
+                >
+                  {totalBentrok}
+                </p>
+              </div>
+
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                  totalBentrok > 0
+                    ? 'bg-red-50 text-red-600'
+                    : 'bg-slate-100 text-slate-400'
+                }`}
+              >
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* =====================================================
+            ERROR
+        ====================================================== */}
+        {error && (
+          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+
+            <div>
+              <p className="text-sm font-semibold">
+                Gagal memuat jadwal
+              </p>
+
+              <p className="mt-0.5 text-xs text-red-600">
+                {error}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* =====================================================
+            TABLE CARD
+        ====================================================== */}
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+
+          {/* Table Header */}
+          <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">
+                Daftar Jadwal
+              </h2>
+
+              <p className="mt-0.5 text-xs text-slate-400">
+                Klik nama kolom untuk mengurutkan data.
+              </p>
+            </div>
+
+            {totalBentrok > 0 && (
+              <div className="inline-flex w-fit items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {totalBentrok} perlu diperiksa
+              </div>
+            )}
+          </div>
+
+          {loading ? (
+            <div className="flex min-h-[360px] flex-col items-center justify-center px-6 text-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+
+              <p className="text-sm font-semibold text-slate-700">
+                Memuat data jadwal...
+              </p>
+
+              <p className="mt-1 text-xs text-slate-400">
+                Mohon tunggu sebentar.
+              </p>
+            </div>
+          ) : jadwalList.length === 0 ? (
+            <div className="flex min-h-[360px] flex-col items-center justify-center px-6 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                <Calendar className="h-7 w-7" />
+              </div>
+
+              <p className="font-semibold text-slate-800">
+                Belum ada jadwal perkuliahan
+              </p>
+
+              <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">
+                {isAdmin
+                  ? 'Klik tombol "Tambah Jadwal" untuk membuat jadwal perkuliahan baru.'
+                  : 'Belum ada data jadwal yang tersedia saat ini.'}
+              </p>
+
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={handleOpenAddModal}
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-indigo-700"
+                >
+                  <Plus className="h-4 w-4" />
+                  Tambah Jadwal
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1050px] text-left text-sm">
+
+                <thead className="border-b border-slate-200 bg-slate-50/80">
+                  <tr className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+
+                    <th
+                      onClick={() => handleSort('mk')}
+                      className="group cursor-pointer whitespace-nowrap px-5 py-3.5 transition hover:bg-slate-100"
+                    >
+                      Mata Kuliah
+                      {renderSortIcon('mk')}
+                    </th>
+
+                    <th
+                      onClick={() => handleSort('hari')}
+                      className="group cursor-pointer whitespace-nowrap px-5 py-3.5 transition hover:bg-slate-100"
+                    >
+                      Hari & Waktu
+                      {renderSortIcon('hari')}
+                    </th>
+
+                    <th
+                      onClick={() => handleSort('ruang')}
+                      className="group cursor-pointer whitespace-nowrap px-5 py-3.5 transition hover:bg-slate-100"
+                    >
+                      Ruang
+                      {renderSortIcon('ruang')}
+                    </th>
+
+                    <th
+                      onClick={() => handleSort('semester')}
+                      className="group cursor-pointer whitespace-nowrap px-5 py-3.5 transition hover:bg-slate-100"
+                    >
+                      Semester
+                      {renderSortIcon('semester')}
+                    </th>
+
+                    <th className="whitespace-nowrap px-5 py-3.5">
+                      Status
+                    </th>
+
+                    <th className="whitespace-nowrap px-5 py-3.5">
+                      Catatan
+                    </th>
+
+                    {isAdmin && (
+                      <th className="whitespace-nowrap px-5 py-3.5 text-center">
+                        Aksi
+                      </th>
+                    )}
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+
+                  {sortedJadwalList.map((item) => {
+                    const itemId = item.id || item.jadwal_id || 0;
+
+                    const bentrokDetails = getBentrokDetails(
+                      item,
+                      jadwalList
+                    );
+
+                    const isBentrok =
+                      item.is_bentrok ||
+                      (bentrokDetails &&
+                        bentrokDetails.length > 0);
+
+                    return (
+                      <tr
+                        key={itemId}
+                        className={`group transition-colors ${
+                          isBentrok
+                            ? 'bg-red-50/50 hover:bg-red-50'
+                            : 'hover:bg-slate-50/80'
+                        }`}
+                      >
+
+                        {/* Mata Kuliah */}
+                        <td className="px-5 py-4">
+                          <div className="flex min-w-[220px] items-start gap-3">
+
+                            <div
+                              className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                                isBentrok
+                                  ? 'bg-red-100 text-red-600'
+                                  : 'bg-indigo-50 text-indigo-600'
+                              }`}
+                            >
+                              <BookOpen className="h-4 w-4" />
+                            </div>
+
+                            <div>
+                              <p className="font-semibold leading-5 text-slate-800">
+                                {getMkName(item)}
+                              </p>
+
+                              {item.kode_mk && (
+                                <p className="mt-0.5 text-[11px] font-medium text-slate-400">
+                                  {item.kode_mk}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Hari & Waktu */}
+                        <td className="px-5 py-4">
+                          <div className="space-y-1.5">
+
+                            <div className="flex items-center gap-2">
+                              <Calendar
+                                className={`h-3.5 w-3.5 ${
+                                  isBentrok
+                                    ? 'text-red-500'
+                                    : 'text-indigo-500'
+                                }`}
+                              />
+
+                              <span className="text-xs font-semibold text-slate-700">
+                                {item.hari}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <Clock
+                                className={`h-3.5 w-3.5 ${
+                                  isBentrok
+                                    ? 'text-red-400'
+                                    : 'text-slate-400'
+                                }`}
+                              />
+
+                              <span className="text-xs text-slate-500">
+                                {item.jam_mulai} — {item.jam_selesai}
+                              </span>
+                            </div>
+
+                          </div>
+                        </td>
+
+                        {/* Ruang */}
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                              <MapPin className="h-3.5 w-3.5" />
+                            </div>
+
+                            <span className="text-xs font-medium text-slate-700">
+                              {getRuangName(item)}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Semester */}
+                        <td className="px-5 py-4">
+                          <span className="inline-flex items-center rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-700">
+                            {getSemesterName(item)}
+                          </span>
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-5 py-4">
+                          {isBentrok ? (
+                            <div className="min-w-[190px]">
+
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-100 px-2.5 py-1 text-[11px] font-bold text-red-700">
+                                <AlertTriangle className="h-3 w-3" />
+                                Bentrok
+                              </span>
+
+                              {bentrokDetails &&
+                                bentrokDetails.length > 0 && (
+                                  <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-2.5">
+                                    <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-red-800">
+                                      Bentrok dengan
+                                    </p>
+
+                                    <div className="space-y-1.5">
+                                      {bentrokDetails.map(
+                                        (b, idx) => (
+                                          <div
+                                            key={idx}
+                                            className="text-[11px] leading-4 text-red-700"
+                                          >
+                                            <span className="font-semibold">
+                                              {b.mk}
+                                            </span>
+
+                                            <span className="text-red-500">
+                                              {' '}
+                                              · {b.ruang}
+                                            </span>
+
+                                            <div className="font-medium text-red-600">
+                                              {b.jam}
+                                            </div>
+                                          </div>
+                                        )
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Aman
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Catatan */}
+                        <td className="px-5 py-4">
+                          <div className="flex max-w-[220px] items-start gap-2">
+                            <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-300" />
+
+                            <span
+                              className="truncate text-xs text-slate-500"
+                              title={item.catatan || undefined}
+                            >
+                              {item.catatan || '-'}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Action */}
+                        {isAdmin && (
+                          <td className="px-5 py-4">
+                            <div className="flex items-center justify-center gap-1 opacity-70 transition-opacity group-hover:opacity-100">
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleOpenEditModal(item)
+                                }
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-700"
+                                title="Edit jadwal"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDelete(itemId)
+                                }
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition hover:bg-red-50 hover:text-red-600"
+                                title="Hapus jadwal"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+
+                            </div>
+                          </td>
+                        )}
+
+                      </tr>
+                    );
+                  })}
+
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-          {error}
-        </div>
-      )}
-
-      {/* Tabel */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        {loading ? (
-          <div className="p-12 text-center text-gray-500 flex flex-col items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-2" />
-            <p className="text-sm">Memuat data jadwal...</p>
-          </div>
-        ) : jadwalList.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">
-            <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="font-medium text-gray-700">Belum ada jadwal perkuliahan</p>
-            <p className="text-xs text-gray-400 mt-1">
-              {isAdmin ? 'Klik tombol "Tambah Jadwal" untuk membuat agenda baru.' : 'Silakan cek kembali nanti.'}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-600">
-              <thead className="bg-gray-50 text-gray-700 font-semibold uppercase text-xs border-b border-gray-200 select-none">
-                <tr>
-                  <th 
-                    onClick={() => handleSort('mk')} 
-                    className="px-6 py-4 cursor-pointer group hover:bg-gray-100 transition"
-                  >
-                    Mata Kuliah / Kegiatan {renderSortIcon('mk')}
-                  </th>
-                  <th 
-                    onClick={() => handleSort('hari')} 
-                    className="px-6 py-4 cursor-pointer group hover:bg-gray-100 transition"
-                  >
-                    Hari & Waktu {renderSortIcon('hari')}
-                  </th>
-                  <th 
-                    onClick={() => handleSort('ruang')} 
-                    className="px-6 py-4 cursor-pointer group hover:bg-gray-100 transition"
-                  >
-                    Ruang {renderSortIcon('ruang')}
-                  </th>
-                  <th 
-                    onClick={() => handleSort('semester')} 
-                    className="px-6 py-4 cursor-pointer group hover:bg-gray-100 transition"
-                  >
-                    Semester {renderSortIcon('semester')}
-                  </th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Catatan</th>
-                  {isAdmin && <th className="px-6 py-4 text-center">Aksi</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {sortedJadwalList.map((item) => {
-                  const itemId = item.id || item.jadwal_id || 0;
-                  
-                  // Deteksi detail bentrok terpusat
-                  const bentrokDetails = getBentrokDetails(item, jadwalList);
-                  const isBentrok = item.is_bentrok || (bentrokDetails && bentrokDetails.length > 0);
-
-                  return (
-                    <tr
-                      key={itemId}
-                      className={`transition ${
-                        isBentrok ? 'bg-red-50/70 hover:bg-red-100/70 border-l-4 border-l-red-500' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 font-semibold text-gray-900">
-                          <BookOpen className={`w-4 h-4 ${isBentrok ? 'text-red-600' : 'text-indigo-600'}`} />
-                          {getMkName(item)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 space-y-1">
-                        <div className="flex items-center gap-1.5 text-xs font-medium text-gray-800">
-                          <Calendar className={`w-3.5 h-3.5 ${isBentrok ? 'text-red-500' : 'text-indigo-500'}`} />
-                          {item.hari}
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                          <Clock className={`w-3.5 h-3.5 ${isBentrok ? 'text-red-400' : 'text-indigo-400'}`} />
-                          {item.jam_mulai} - {item.jam_selesai}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5 text-xs text-gray-700 font-medium">
-                          <MapPin className="w-3.5 h-3.5 text-red-500" />
-                          {getRuangName(item)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="inline-block bg-indigo-50 text-indigo-700 text-xs px-2.5 py-1 rounded-md font-medium">
-                          {getSemesterName(item)}
-                        </span>
-                      </td>
-
-                      {/* Kolom Badge Status Bentrok */}
-                      <td className="px-6 py-4">
-                        {isBentrok ? (
-                          <div className="flex flex-col gap-1 items-start">
-                            <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs px-2.5 py-1 rounded-full font-bold border border-red-300 shadow-sm">
-                              <AlertTriangle className="w-3 h-3 text-red-600 shrink-0" />
-                              Bentrok
-                            </span>
-                            {bentrokDetails && bentrokDetails.length > 0 && (
-                              <div className="text-[11px] text-red-700 bg-red-100/80 p-2 rounded-lg border border-red-200 mt-1 max-w-xs space-y-1">
-                                <span className="font-semibold block text-red-800">Bentrok dengan:</span>
-                                {bentrokDetails.map((b, idx) => (
-                                  <div key={idx} className="leading-tight">
-                                    • <strong>{b.mk}</strong> ({b.ruang}) <br />
-                                    <span className="text-red-600 font-medium">⏱ {b.jam}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 text-xs px-2.5 py-1 rounded-full font-medium border border-green-200">
-                            Aman
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="px-6 py-4 text-xs text-gray-500 max-w-xs truncate">
-                        {item.catatan || '-'}
-                      </td>
-
-                      {isAdmin && (
-                        <td className="px-6 py-4 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => handleOpenEditModal(item)}
-                              className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-md transition"
-                              title="Edit"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(itemId)}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-md transition"
-                              title="Hapus"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Modal Form */}
+      {/* =====================================================
+          MODAL
+      ====================================================== */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 relative">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">
-              {isEditing ? 'Edit Jadwal' : 'Tambah Jadwal Baru'}
-            </h2>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowModal(false);
+            }
+          }}
+        >
+          <div className="my-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Select MK */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Mata Kuliah
-                </label>
-                <select
-                  required
-                  value={formData.mk_id}
-                  onChange={(e) => setFormData({ ...formData, mk_id: e.target.value })}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                >
-                  <option value="" disabled>-- Pilih Mata Kuliah --</option>
-                  {mkOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.nama}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
 
-              {/* Select Ruang & Semester */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Ruangan
-                  </label>
-                  <select
-                    required
-                    value={formData.ruang_id}
-                    onChange={(e) => setFormData({ ...formData, ruang_id: e.target.value })}
-                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  >
-                    <option value="" disabled>-- Pilih Ruang --</option>
-                    {ruangOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.nama}
-                      </option>
-                    ))}
-                  </select>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                  {isEditing ? (
+                    <Edit className="h-5 w-5" />
+                  ) : (
+                    <Plus className="h-5 w-5" />
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Semester
-                  </label>
-                  <select
-                    required
-                    value={formData.master_semester_id}
-                    onChange={(e) => setFormData({ ...formData, master_semester_id: e.target.value })}
-                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  >
-                    <option value="" disabled>-- Pilih Semester --</option>
-                    {semesterOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.nama}
-                      </option>
-                    ))}
-                  </select>
+                  <h2 className="text-base font-bold text-slate-900">
+                    {isEditing
+                      ? 'Edit Jadwal'
+                      : 'Tambah Jadwal Baru'}
+                  </h2>
+
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Lengkapi informasi jadwal perkuliahan.
+                  </p>
                 </div>
               </div>
 
-              {/* Hari & Jam */}
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Hari
-                  </label>
-                  <select
-                    value={formData.hari}
-                    onChange={(e) => setFormData({ ...formData, hari: e.target.value })}
-                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  >
-                    {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'].map((h) => (
-                      <option key={h} value={h}>
-                        {h}
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                aria-label="Tutup"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleSubmit}>
+
+              <div className="max-h-[70vh] overflow-y-auto px-5 py-5 sm:px-6">
+
+                {/* Section: Akademik */}
+                <div className="mb-6">
+                  <div className="mb-4">
+                    <h3 className="text-sm font-bold text-slate-800">
+                      Informasi Akademik
+                    </h3>
+
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      Pilih mata kuliah dan semester yang sesuai.
+                    </p>
+                  </div>
+
+                  {/* MK */}
+                  <div className="mb-4">
+                    <label className={labelClass}>
+                      Mata Kuliah
+                    </label>
+
+                    <select
+                      required
+                      value={formData.mk_id}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          mk_id: e.target.value,
+                        })
+                      }
+                      className={inputClass}
+                    >
+                      <option value="" disabled>
+                        -- Pilih Mata Kuliah --
                       </option>
-                    ))}
-                  </select>
+
+                      {mkOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.nama}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Ruang & Semester */}
+                  <div className="grid gap-4 sm:grid-cols-2">
+
+                    <div>
+                      <label className={labelClass}>
+                        Ruangan
+                      </label>
+
+                      <select
+                        required
+                        value={formData.ruang_id}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            ruang_id: e.target.value,
+                          })
+                        }
+                        className={inputClass}
+                      >
+                        <option value="" disabled>
+                          -- Pilih Ruang --
+                        </option>
+
+                        {ruangOptions.map((opt) => (
+                          <option
+                            key={opt.id}
+                            value={opt.id}
+                          >
+                            {opt.nama}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>
+                        Semester
+                      </label>
+
+                      <select
+                        required
+                        value={formData.master_semester_id}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            master_semester_id:
+                              e.target.value,
+                          })
+                        }
+                        className={inputClass}
+                      >
+                        <option value="" disabled>
+                          -- Pilih Semester --
+                        </option>
+
+                        {semesterOptions.map((opt) => (
+                          <option
+                            key={opt.id}
+                            value={opt.id}
+                          >
+                            {opt.nama}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                  </div>
                 </div>
 
+                {/* Divider */}
+                <div className="mb-6 border-t border-slate-100" />
+
+                {/* Section: Waktu */}
+                <div className="mb-6">
+                  <div className="mb-4">
+                    <h3 className="text-sm font-bold text-slate-800">
+                      Waktu Perkuliahan
+                    </h3>
+
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      Tentukan hari dan rentang waktu perkuliahan.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-3">
+
+                    <div>
+                      <label className={labelClass}>
+                        Hari
+                      </label>
+
+                      <select
+                        value={formData.hari}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            hari: e.target.value,
+                          })
+                        }
+                        className={inputClass}
+                      >
+                        {[
+                          'Senin',
+                          'Selasa',
+                          'Rabu',
+                          'Kamis',
+                          'Jumat',
+                          'Sabtu',
+                          'Minggu',
+                        ].map((h) => (
+                          <option key={h} value={h}>
+                            {h}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>
+                        Jam Mulai
+                      </label>
+
+                      <input
+                        type="time"
+                        required
+                        value={formData.jam_mulai}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            jam_mulai: e.target.value,
+                          })
+                        }
+                        className={inputClass}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={labelClass}>
+                        Jam Selesai
+                      </label>
+
+                      <input
+                        type="time"
+                        required
+                        value={formData.jam_selesai}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            jam_selesai: e.target.value,
+                          })
+                        }
+                        className={inputClass}
+                      />
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* Divider */}
+                <div className="mb-6 border-t border-slate-100" />
+
+                {/* Section: Catatan */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Jam Mulai
-                  </label>
-                  <input
-                    type="time"
-                    required
-                    value={formData.jam_mulai}
-                    onChange={(e) => setFormData({ ...formData, jam_mulai: e.target.value })}
-                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  <div className="mb-4">
+                    <h3 className="text-sm font-bold text-slate-800">
+                      Catatan
+                    </h3>
+
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      Tambahkan informasi tambahan jika diperlukan.
+                    </p>
+                  </div>
+
+                  <textarea
+                    rows={3}
+                    placeholder="Contoh: Dosen berhalangan hadir, diganti praktikum..."
+                    value={formData.catatan}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        catatan: e.target.value,
+                      })
+                    }
+                    className={`${inputClass} resize-none`}
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Jam Selesai
-                  </label>
-                  <input
-                    type="time"
-                    required
-                    value={formData.jam_selesai}
-                    onChange={(e) => setFormData({ ...formData, jam_selesai: e.target.value })}
-                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  />
-                </div>
               </div>
 
-              {/* Catatan */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Catatan (Opsional)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Contoh: Dosen berhalangan hadir diganti praktikum..."
-                  value={formData.catatan}
-                  onChange={(e) => setFormData({ ...formData, catatan: e.target.value })}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
-                />
-              </div>
+              {/* Modal Footer */}
+              <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
                 >
                   Batal
                 </button>
+
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {isEditing ? 'Simpan Perubahan' : 'Tambah Jadwal'}
+                  {submitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      {isEditing
+                        ? 'Simpan Perubahan'
+                        : 'Tambah Jadwal'}
+                    </>
+                  )}
                 </button>
+
               </div>
+
             </form>
           </div>
         </div>
@@ -651,3 +1162,5 @@ export const JadwalTable: React.FC = () => {
     </div>
   );
 };
+
+export default JadwalTable;
