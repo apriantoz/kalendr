@@ -115,10 +115,10 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <nav className="hidden items-center gap-1 md:flex">
-            <Link to="/" className={navItemClass("/")}>
+            {/* <Link to="/" className={navItemClass("/")}>
               <BookOpen size={16} />
               Jadwal Publik
-            </Link>
+            </Link> */}
 
             {isAdmin && (
               <>

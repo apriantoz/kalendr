@@ -722,6 +722,11 @@ const PublicScheduleRow = ({
 }) => {
   const conflicts = getBentrokDetails(item, jadwalList) ?? []
 
+  const conflictNames = conflicts
+    .map((conflictItem: any) => conflictItem.mk || getMkName(conflictItem))
+    .filter(Boolean)
+    .join(', ')
+
   const namaMk =
     getMkName(item) || 'Mata Kuliah'
 
@@ -829,8 +834,7 @@ const PublicScheduleRow = ({
 
         {conflicts.length > 0 && (
           <p className="mt-2 text-xs font-medium text-red-600">
-            {conflicts.length} jadwal memiliki waktu
-            atau ruangan yang beririsan.
+            Bentrok dengan: {conflictNames}
           </p>
         )}
 
@@ -847,6 +851,11 @@ const PublicScheduleCard = ({
   jadwalList: JadwalPublicItem[]
 }) => {
   const conflicts = getBentrokDetails(item, jadwalList) ?? []
+
+  const conflictNames = conflicts
+    .map((conflictItem: any) => conflictItem.mk || getMkName(conflictItem))
+    .filter(Boolean)
+    .join(', ')
 
   const namaMk =
     getMkName(item) || 'Mata Kuliah'
@@ -973,8 +982,7 @@ const PublicScheduleCard = ({
           />
 
           <span>
-            Jadwal ini memiliki {conflicts.length}{' '}
-            potensi bentrok dengan jadwal lain.
+            Bentrok dengan: {conflictNames}
           </span>
 
         </div>
