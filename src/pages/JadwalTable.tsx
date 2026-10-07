@@ -1,42 +1,30 @@
 // src/pages/JadwalTable.tsx
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-
+import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/context/AuthContext';
-
 import {
   getBentrokDetails,
   getMkName,
   getRuangName,
   type ScheduleItem,
 } from '@/utils/scheduleHelpers';
-
 import {
-  Plus,
-  Edit,
-  Trash2,
-  Calendar,
-  Clock,
-  MapPin,
-  BookOpen,
-  Loader2,
-  RefreshCw,
   AlertTriangle,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
+  BookOpen,
+  CalendarDays,
   CheckCircle2,
-  X,
-  Save,
-  FileText,
-  Search,
   ChevronDown,
-  GraduationCap,
+  Clock,
+  Edit,
+  FileText,
+  Loader2,
+  MapPin,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  Trash2,
+  X,
 } from 'lucide-react';
 
 export interface JadwalItem extends ScheduleItem {
@@ -50,78 +38,59 @@ export interface JadwalItem extends ScheduleItem {
 interface DropdownOption {
   id: number;
   nama: string;
-  kode?: string;
 }
 
-interface ActiveSemester {
-  id: number;
-  tahun_ajaran?: string;
-  tipe_semester?: string;
-  is_active?: boolean;
-}
+type ViewMode = 'jadwal' | 'ruang';
 
-type SortField =
-  | 'mk'
-  | 'hari'
-  | 'jam_mulai'
-  | 'ruang'
-  | 'semester';
+const DAYS = [
+  'Senin',
+  'Selasa',
+  'Rabu',
+  'Kamis',
+  'Jumat',
+  'Sabtu',
+  'Minggu',
+];
 
-type SortOrder = 'asc' | 'desc';
+const dayIndex: Record<string, number> = Object.fromEntries(
+  DAYS.map((d, i) => [d, i])
+);
 
 export const JadwalTable: React.FC = () => {
   const { isAdmin } = useAuth();
 
-  // =========================================================
-  // DATA
-  // =========================================================
-
   const [jadwalList, setJadwalList] = useState<JadwalItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [mkOptions, setMkOptions] = useState<DropdownOption[]>([]);
+  const [ruangOptions, setRuangOptions] = useState<DropdownOption[]>([]);
+  const [semesterOptions, setSemesterOptions] = useState<DropdownOption[]>(
+    []
+  );
+
+  const [activeSemesterId, setActiveSemesterId] = useState<number | null>(
+    null
+  );
+  const [activeSemesterName, setActiveSemesterName] =
+    useState('Semester aktif');
+
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // =========================================================
-  // SORTING
-  // =========================================================
+  const [search, setSearch] = useState('');
+  const [dayFilter, setDayFilter] = useState('Semua Hari');
+  const [roomFilter, setRoomFilter] = useState('Semua Ruang');
 
-  const [sortField, setSortField] =
-    useState<SortField>('hari');
+  const [viewMode, setViewMode] = useState<ViewMode>('jadwal');
+  const [selectedRoom, setSelectedRoom] = useState<number | null>(null);
 
-  const [sortOrder, setSortOrder] =
-    useState<SortOrder>('asc');
+  const [showModal, setShowModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  // =========================================================
-  // MASTER DATA
-  // =========================================================
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
 
-  const [mkOptions, setMkOptions] =
-    useState<DropdownOption[]>([]);
-
-  const [ruangOptions, setRuangOptions] =
-    useState<DropdownOption[]>([]);
-
-  const [activeSemester, setActiveSemester] =
-    useState<ActiveSemester | null>(null);
-
-  // =========================================================
-  // MODAL
-  // =========================================================
-
-  const [showModal, setShowModal] =
-    useState<boolean>(false);
-
-  const [isEditing, setIsEditing] =
-    useState<boolean>(false);
-
-  const [selectedId, setSelectedId] =
-    useState<number | null>(null);
-
-  const [submitting, setSubmitting] =
-    useState<boolean>(false);
-
-  // =========================================================
-  // FORM
-  // =========================================================
+  const [mkSearch, setMkSearch] = useState('');
+  const [mkOpen, setMkOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     mk_id: '',
@@ -133,521 +102,236 @@ export const JadwalTable: React.FC = () => {
     catatan: '',
   });
 
-  // =========================================================
-  // COMBOBOX MATA KULIAH
-  // =========================================================
-
-  const [mkSearch, setMkSearch] =
-    useState<string>('');
-
-  const [showMkDropdown, setShowMkDropdown] =
-    useState<boolean>(false);
-
-  const [mkHighlightIndex, setMkHighlightIndex] =
-    useState<number>(0);
-
-  const mkComboboxRef =
-    useRef<HTMLDivElement | null>(null);
-
-  // =========================================================
-  // HELPERS
-  // =========================================================
-
-  const getSemesterName = (item: JadwalItem) => {
-    if (
-      item.tahun_ajaran &&
-      item.tipe_semester
-    ) {
-      return `${item.tahun_ajaran} (${item.tipe_semester})`;
-    }
-
-    return item.master_semester_id
-      ? `Semester #${item.master_semester_id}`
-      : '-';
-  };
-
-  const formatSemester = (
-    semester: ActiveSemester | null
-  ) => {
-    if (!semester) {
-      return 'Belum ada semester aktif';
-    }
-
-    const tahun = semester.tahun_ajaran || '';
-    const tipe = semester.tipe_semester || '';
-
-    if (tahun && tipe) {
-      return `${tahun} (${tipe})`;
-    }
-
-    return tahun || tipe || `Semester #${semester.id}`;
-  };
-
-  const hariUrutan: Record<string, number> = {
-    Senin: 1,
-    Selasa: 2,
-    Rabu: 3,
-    Kamis: 4,
-    Jumat: 5,
-    Sabtu: 6,
-    Minggu: 7,
-  };
-
-  // =========================================================
-  // FILTER COMBOBOX MK
-  // =========================================================
-
-  const filteredMkOptions = useMemo(() => {
-    const keyword = mkSearch
-      .trim()
-      .toLowerCase();
-
-    if (!keyword) {
-      return mkOptions.slice(0, 50);
-    }
-
-    return mkOptions
-      .filter((item) => {
-        const nama =
-          item.nama.toLowerCase();
-
-        const kode =
-          item.kode?.toLowerCase() || '';
-
-        return (
-          nama.includes(keyword) ||
-          kode.includes(keyword)
-        );
-      })
-      .slice(0, 50);
-  }, [mkOptions, mkSearch]);
-
-  // =========================================================
-  // FETCH MASTER DATA
-  // =========================================================
-
   const fetchMasterData = async () => {
-    try {
-      const [
-        mkRes,
-        ruangRes,
-        semRes,
-      ] = await Promise.all([
-        supabase
-          .from('mk')
-          .select('*'),
+    const [mkRes, roomRes, semRes] = await Promise.all([
+      supabase.from('mk').select('*'),
+      supabase.from('ruang').select('*'),
+      supabase.from('master_semester').select('*'),
+    ]);
 
-        supabase
-          .from('ruang')
-          .select('*'),
+    if (mkRes.error) throw mkRes.error;
+    if (roomRes.error) throw roomRes.error;
+    if (semRes.error) throw semRes.error;
 
-        supabase
-          .from('master_semester')
-          .select('*')
-          .eq('is_active', true)
-          .maybeSingle(),
-      ]);
+    setMkOptions(
+      (mkRes.data || []).map((x: any) => ({
+        id: x.id,
+        nama: x.nama_mk || x.nama || `MK ID ${x.id}`,
+      }))
+    );
 
-      // -----------------------------
-      // Mata Kuliah
-      // -----------------------------
+    setRuangOptions(
+      (roomRes.data || []).map((x: any) => ({
+        id: x.id,
+        nama: x.nama_ruang || x.nama || `Ruang ID ${x.id}`,
+      }))
+    );
 
-      if (mkRes.error) {
-        console.error(
-          'Error fetching MK:',
-          mkRes.error
-        );
-      }
+    const semesters = semRes.data || [];
 
-      if (mkRes.data) {
-        const mappedMk =
-          mkRes.data.map((item: any) => ({
-            id: item.id,
-            nama:
-              item.nama_mk ||
-              item.nama ||
-              `MK ID ${item.id}`,
-            kode:
-              item.kode_mk ||
-              item.kode ||
-              item.kode_matakuliah ||
-              '',
-          }));
+    setSemesterOptions(
+      semesters.map((x: any) => ({
+        id: x.id,
+        nama:
+          x.nama_semester ||
+          x.semester ||
+          x.nama ||
+          [x.tahun_ajaran, x.tipe_semester]
+            .filter(Boolean)
+            .join(' ') ||
+          `Semester ID ${x.id}`,
+      }))
+    );
 
-        mappedMk.sort((a, b) =>
-          a.nama.localeCompare(
-            b.nama,
-            'id'
-          )
-        );
+    const active = semesters.find(
+      (x: any) =>
+        x.is_active === true ||
+        x.aktif === true ||
+        x.status === 'aktif'
+    );
 
-        setMkOptions(mappedMk);
-      }
+    const fallback = active || semesters[0];
 
-      // -----------------------------
-      // Ruangan
-      // -----------------------------
+    if (fallback) {
+      setActiveSemesterId(fallback.id);
 
-      if (ruangRes.error) {
-        console.error(
-          'Error fetching ruang:',
-          ruangRes.error
-        );
-      }
-
-      if (ruangRes.data) {
-        const mappedRuang =
-          ruangRes.data.map((item: any) => ({
-            id: item.id,
-            nama:
-              item.nama_ruang ||
-              item.nama ||
-              `Ruang ID ${item.id}`,
-          }));
-
-        mappedRuang.sort((a, b) =>
-          a.nama.localeCompare(
-            b.nama,
-            'id'
-          )
-        );
-
-        setRuangOptions(mappedRuang);
-      }
-
-      // -----------------------------
-      // Semester Aktif
-      // -----------------------------
-
-      if (semRes.error) {
-        console.error(
-          'Error fetching semester aktif:',
-          semRes.error
-        );
-
-        setActiveSemester(null);
-      } else {
-        setActiveSemester(
-          semRes.data || null
-        );
-      }
-    } catch (err) {
-      console.error(
-        'Error fetching master data:',
-        err
+      setActiveSemesterName(
+        fallback.nama_semester ||
+          fallback.semester ||
+          fallback.nama ||
+          [fallback.tahun_ajaran, fallback.tipe_semester]
+            .filter(Boolean)
+            .join(' ') ||
+          `Semester #${fallback.id}`
       );
     }
   };
-
-  // =========================================================
-  // FETCH JADWAL
-  // =========================================================
 
   const fetchJadwal = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const {
-        data,
-        error,
-      } = await supabase
+      const { data, error: qError } = await supabase
         .from('view_jadwal_detail')
         .select('*');
 
-      if (error) {
-        throw error;
-      }
-
-      const formattedData =
-        (data || []).map(
-          (item: any) => ({
-            ...item,
-            id:
-              item.jadwal_id ||
-              item.id,
-          })
-        );
+      if (qError) throw qError;
 
       setJadwalList(
-        formattedData
+        (data || []).map((x: any) => ({
+          ...x,
+          id: x.jadwal_id || x.id,
+        }))
       );
-    } catch (err: any) {
-      console.error(
-        'Error fetching jadwal:',
-        err
-      );
-
-      setError(
-        err.message ||
-          'Gagal mengambil data jadwal.'
-      );
+    } catch (e: any) {
+      console.error(e);
+      setError(e.message || 'Gagal mengambil data jadwal.');
     } finally {
       setLoading(false);
     }
   };
 
-  // =========================================================
-  // INITIAL LOAD
-  // =========================================================
+  const refresh = async () => {
+    setError(null);
 
-  useEffect(() => {
-    fetchJadwal();
-    fetchMasterData();
-  }, []);
-
-  // =========================================================
-  // CLICK OUTSIDE COMBOBOX
-  // =========================================================
-
-  useEffect(() => {
-    const handleClickOutside = (
-      event: MouseEvent
-    ) => {
-      if (
-        mkComboboxRef.current &&
-        !mkComboboxRef.current.contains(
-          event.target as Node
-        )
-      ) {
-        setShowMkDropdown(false);
-      }
-    };
-
-    document.addEventListener(
-      'mousedown',
-      handleClickOutside
-    );
-
-    return () => {
-      document.removeEventListener(
-        'mousedown',
-        handleClickOutside
-      );
-    };
-  }, []);
-
-  // =========================================================
-  // SORTING
-  // =========================================================
-
-  const handleSort = (
-    field: SortField
-  ) => {
-    if (sortField === field) {
-      setSortOrder(
-        sortOrder === 'asc'
-          ? 'desc'
-          : 'asc'
-      );
-    } else {
-      setSortField(field);
-      setSortOrder('asc');
+    try {
+      await Promise.all([fetchJadwal(), fetchMasterData()]);
+    } catch (e: any) {
+      setError(e.message || 'Gagal memuat data.');
     }
   };
 
-  const sortedJadwalList = useMemo(() => {
-    return [...jadwalList].sort(
-      (a, b) => {
-        let valA: any = '';
-        let valB: any = '';
+  useEffect(() => {
+    refresh();
+  }, []);
 
-        if (sortField === 'mk') {
-          valA =
-            getMkName(a).toLowerCase();
+  const getSemesterName = (item: JadwalItem) =>
+    item.tahun_ajaran && item.tipe_semester
+      ? `${item.tahun_ajaran} (${item.tipe_semester})`
+      : item.master_semester_id
+      ? `Semester #${item.master_semester_id}`
+      : '-';
 
-          valB =
-            getMkName(b).toLowerCase();
-        }
+  const isConflict = (item: JadwalItem) => {
+    const details = getBentrokDetails(item, jadwalList);
 
-        if (sortField === 'hari') {
-          valA =
-            hariUrutan[
-              a.hari || 'Senin'
-            ] || 8;
-
-          valB =
-            hariUrutan[
-              b.hari || 'Senin'
-            ] || 8;
-        }
-
-        if (
-          sortField ===
-          'jam_mulai'
-        ) {
-          valA =
-            a.jam_mulai ||
-            '00:00';
-
-          valB =
-            b.jam_mulai ||
-            '00:00';
-        }
-
-        if (sortField === 'ruang') {
-          valA =
-            getRuangName(
-              a
-            ).toLowerCase();
-
-          valB =
-            getRuangName(
-              b
-            ).toLowerCase();
-        }
-
-        if (
-          sortField ===
-          'semester'
-        ) {
-          valA =
-            getSemesterName(
-              a
-            ).toLowerCase();
-
-          valB =
-            getSemesterName(
-              b
-            ).toLowerCase();
-        }
-
-        if (valA < valB) {
-          return sortOrder ===
-            'asc'
-            ? -1
-            : 1;
-        }
-
-        if (valA > valB) {
-          return sortOrder ===
-            'asc'
-            ? 1
-            : -1;
-        }
-
-        return 0;
-      }
-    );
-  }, [
-    jadwalList,
-    sortField,
-    sortOrder,
-  ]);
-
-  // =========================================================
-  // PILIH MATA KULIAH
-  // =========================================================
-
-  const handleSelectMk = (
-    option: DropdownOption
-  ) => {
-    setFormData((prev) => ({
-      ...prev,
-      mk_id: String(option.id),
-    }));
-
-    setMkSearch(option.nama);
-    setShowMkDropdown(false);
-    setMkHighlightIndex(0);
+    return Boolean(item.is_bentrok || (details && details.length));
   };
 
-  // =========================================================
-  // KEYBOARD COMBOBOX
-  // =========================================================
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
 
-  const handleMkKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement>
-  ) => {
-    if (!showMkDropdown) {
-      if (
-        e.key === 'ArrowDown' ||
-        e.key === 'Enter'
-      ) {
-        e.preventDefault();
-        setShowMkDropdown(true);
-      }
+    return jadwalList
+      .filter((item) => {
+        const text = [
+          getMkName(item),
+          getRuangName(item),
+          item.kode_mk || '',
+          item.hari || '',
+          getSemesterName(item),
+          item.catatan || '',
+        ]
+          .join(' ')
+          .toLowerCase();
 
-      return;
-    }
+        const matchesSearch = !q || text.includes(q);
 
-    if (
-      e.key === 'ArrowDown'
-    ) {
-      e.preventDefault();
+        const matchesDay =
+          dayFilter === 'Semua Hari' || item.hari === dayFilter;
 
-      setMkHighlightIndex(
-        (prev) =>
-          Math.min(
-            prev + 1,
-            filteredMkOptions.length - 1
+        const matchesRoom =
+          roomFilter === 'Semua Ruang' ||
+          String(item.ruang_id) === roomFilter;
+
+        return matchesSearch && matchesDay && matchesRoom;
+      })
+      .sort((a, b) => {
+        const day =
+          (dayIndex[a.hari || ''] ?? 9) -
+          (dayIndex[b.hari || ''] ?? 9);
+
+        return (
+          day ||
+          String(a.jam_mulai || '').localeCompare(
+            String(b.jam_mulai || '')
           )
-      );
-    }
-
-    if (
-      e.key === 'ArrowUp'
-    ) {
-      e.preventDefault();
-
-      setMkHighlightIndex(
-        (prev) =>
-          Math.max(prev - 1, 0)
-      );
-    }
-
-    if (
-      e.key === 'Enter'
-    ) {
-      e.preventDefault();
-
-      const selected =
-        filteredMkOptions[
-          mkHighlightIndex
-        ];
-
-      if (selected) {
-        handleSelectMk(
-          selected
         );
-      }
-    }
+      });
+  }, [jadwalList, search, dayFilter, roomFilter]);
 
-    if (
-      e.key === 'Escape'
-    ) {
-      e.preventDefault();
-      setShowMkDropdown(false);
-    }
-  };
+  const groupedByDay = useMemo(
+    () =>
+      DAYS.map((day) => ({
+        day,
+        items: filtered.filter((x) => x.hari === day),
+      })).filter((g) => g.items.length),
+    [filtered]
+  );
 
-  // =========================================================
-  // TAMBAH
-  // =========================================================
+  const roomsInUse = useMemo(
+    () =>
+      new Set(
+        jadwalList
+          .map((x) => x.ruang_id)
+          .filter(Boolean)
+      ).size,
+    [jadwalList]
+  );
 
-  const handleOpenAddModal = () => {
+  const totalConflict = useMemo(
+    () => jadwalList.filter(isConflict).length,
+    [jadwalList]
+  );
+
+  const roomGroups = useMemo(() => {
+    const rooms =
+      roomFilter !== 'Semua Ruang'
+        ? ruangOptions.filter(
+            (x) => String(x.id) === roomFilter
+          )
+        : ruangOptions;
+
+    return rooms
+      .map((room) => ({
+        room,
+        items: filtered.filter(
+          (x) => Number(x.ruang_id) === room.id
+        ),
+      }))
+      .filter((x) => x.items.length);
+  }, [ruangOptions, filtered, roomFilter]);
+
+  const openAdd = () => {
     setIsEditing(false);
     setSelectedId(null);
-
+    setFormError('');
     setMkSearch('');
-    setShowMkDropdown(false);
-    setMkHighlightIndex(0);
+    setMkOpen(false);
 
     setFormData({
-      mk_id: '',
+      mk_id: mkOptions[0]?.id
+        ? String(mkOptions[0].id)
+        : '',
+
       ruang_id:
-        ruangOptions[0]?.id
-          ? String(
-              ruangOptions[0].id
-            )
+        roomFilter !== 'Semua Ruang'
+          ? roomFilter
+          : ruangOptions[0]?.id
+          ? String(ruangOptions[0].id)
           : '',
-      master_semester_id:
-        activeSemester?.id
-          ? String(
-              activeSemester.id
-            )
-          : '',
-      hari: 'Senin',
+
+      master_semester_id: activeSemesterId
+        ? String(activeSemesterId)
+        : semesterOptions[0]?.id
+        ? String(semesterOptions[0].id)
+        : '',
+
+      hari:
+        dayFilter !== 'Semua Hari'
+          ? dayFilter
+          : 'Senin',
+
       jam_mulai: '08:00',
       jam_selesai: '10:00',
       catatan: '',
@@ -656,180 +340,99 @@ export const JadwalTable: React.FC = () => {
     setShowModal(true);
   };
 
-  // =========================================================
-  // EDIT
-  // =========================================================
+  const openEdit = (item: JadwalItem) => {
+    const id = item.id || item.jadwal_id;
 
-  const handleOpenEditModal = (
-    item: JadwalItem
-  ) => {
+    if (!id) return;
+
     setIsEditing(true);
-
-    const itemId =
-      item.id ||
-      item.jadwal_id;
-
-    if (!itemId) {
-      return;
-    }
-
-    setSelectedId(itemId);
-
-    const selectedMk =
-      mkOptions.find(
-        (mk) =>
-          String(mk.id) ===
-          String(item.mk_id)
-      );
-
-    setMkSearch(
-      selectedMk?.nama ||
-        getMkName(item) ||
-        ''
-    );
-
-    setShowMkDropdown(false);
-    setMkHighlightIndex(0);
+    setSelectedId(id);
+    setFormError('');
+    setMkSearch(getMkName(item));
+    setMkOpen(false);
 
     setFormData({
-      mk_id: String(
-        item.mk_id
+      mk_id: String(item.mk_id ?? ''),
+      ruang_id: String(item.ruang_id ?? ''),
+      master_semester_id: String(
+        item.master_semester_id ?? ''
       ),
-      ruang_id: String(
-        item.ruang_id
-      ),
-      master_semester_id:
-        String(
-          item.master_semester_id
-        ),
-      hari:
-        item.hari ||
-        'Senin',
-      jam_mulai:
-        item.jam_mulai ||
-        '08:00',
-      jam_selesai:
-        item.jam_selesai ||
-        '10:00',
-      catatan:
-        item.catatan || '',
+      hari: item.hari || 'Senin',
+      jam_mulai: item.jam_mulai || '08:00',
+      jam_selesai: item.jam_selesai || '10:00',
+      catatan: item.catatan || '',
     });
 
     setShowModal(true);
   };
 
-  // =========================================================
-  // SUBMIT
-  // =========================================================
-
-  const handleSubmit = async (
-    e: React.FormEvent
-  ) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.mk_id) {
-      alert(
-        'Silakan pilih Mata Kuliah terlebih dahulu.'
-      );
-      return;
-    }
+    setFormError('');
 
-    if (!formData.ruang_id) {
-      alert(
-        'Silakan pilih Ruangan terlebih dahulu.'
+    if (
+      !formData.mk_id ||
+      !formData.ruang_id ||
+      !formData.master_semester_id
+    ) {
+      return setFormError(
+        'Mata kuliah, ruangan, dan semester wajib dipilih.'
       );
-      return;
     }
 
     if (
-      !formData.master_semester_id
+      formData.jam_selesai <=
+      formData.jam_mulai
     ) {
-      alert(
-        'Semester belum tersedia. Silakan aktifkan semester terlebih dahulu di Master Semester.'
+      return setFormError(
+        'Jam selesai harus lebih besar dari jam mulai.'
       );
-      return;
     }
 
     setSubmitting(true);
 
     const payload = {
-      mk_id: Number(
-        formData.mk_id
+      mk_id: Number(formData.mk_id),
+      ruang_id: Number(formData.ruang_id),
+      master_semester_id: Number(
+        formData.master_semester_id
       ),
-
-      ruang_id: Number(
-        formData.ruang_id
-      ),
-
-      master_semester_id:
-        Number(
-          formData.master_semester_id
-        ),
-
       hari: formData.hari,
-
-      jam_mulai:
-        formData.jam_mulai,
-
-      jam_selesai:
-        formData.jam_selesai,
-
-      catatan:
-        formData.catatan || null,
+      jam_mulai: formData.jam_mulai,
+      jam_selesai: formData.jam_selesai,
+      catatan: formData.catatan || null,
     };
 
     try {
-      if (
-        isEditing &&
-        selectedId
-      ) {
-        const {
-          error,
-        } = await supabase
+      if (isEditing && selectedId) {
+        const { error } = await supabase
           .from('jadwal')
           .update(payload)
-          .eq(
-            'id',
-            selectedId
-          );
+          .eq('id', selectedId);
 
-        if (error) {
-          throw error;
-        }
+        if (error) throw error;
       } else {
-        const {
-          error,
-        } = await supabase
+        const { error } = await supabase
           .from('jadwal')
-          .insert([
-            payload,
-          ]);
+          .insert([payload]);
 
-        if (error) {
-          throw error;
-        }
+        if (error) throw error;
       }
 
       setShowModal(false);
 
       await fetchJadwal();
-    } catch (err: any) {
-      alert(
-        'Gagal menyimpan data: ' +
-          err.message
+    } catch (e: any) {
+      setFormError(
+        e.message || 'Gagal menyimpan jadwal.'
       );
     } finally {
       setSubmitting(false);
     }
   };
 
-  // =========================================================
-  // DELETE
-  // =========================================================
-
-  const handleDelete = async (
-    id: number
-  ) => {
+  const remove = async (id: number) => {
     if (
       !window.confirm(
         'Apakah Anda yakin ingin menghapus jadwal ini?'
@@ -839,716 +442,560 @@ export const JadwalTable: React.FC = () => {
     }
 
     try {
-      const {
-        error,
-      } = await supabase
+      const { error } = await supabase
         .from('jadwal')
         .delete()
-        .eq(
-          'id',
-          id
-        );
+        .eq('id', id);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       await fetchJadwal();
-    } catch (err: any) {
+    } catch (e: any) {
       alert(
-        'Gagal menghapus data: ' +
-          err.message
+        'Gagal menghapus data: ' + e.message
       );
     }
   };
 
-  // =========================================================
-  // STATISTIK
-  // =========================================================
+  const selectedMk = mkOptions.find(
+    (x) => String(x.id) === formData.mk_id
+  );
 
-  const totalBentrok =
-    jadwalList.filter(
-      (item) => {
-        const details =
-          getBentrokDetails(
-            item,
-            jadwalList
-          );
+  const filteredMkOptions = mkOptions.filter((x) =>
+    x.nama
+      .toLowerCase()
+      .includes(mkSearch.toLowerCase())
+  );
 
-        return (
-          item.is_bentrok ||
-          (details &&
-            details.length >
-              0)
-        );
-      }
-    ).length;
-
-  const totalAman =
-    Math.max(
-      jadwalList.length -
-        totalBentrok,
-      0
-    );
-
-  // =========================================================
-  // SORT ICON
-  // =========================================================
-
-  const renderSortIcon = (
-    field: SortField
-  ) => {
-    if (
-      sortField !== field
-    ) {
-      return (
-        <ArrowUpDown className="ml-1 inline h-3.5 w-3.5 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100" />
-      );
-    }
-
-    return sortOrder ===
-      'asc' ? (
-      <ArrowUp className="ml-1 inline h-3.5 w-3.5 text-indigo-600" />
-    ) : (
-      <ArrowDown className="ml-1 inline h-3.5 w-3.5 text-indigo-600" />
-    );
-  };
-
-  // =========================================================
-  // CLASS
-  // =========================================================
-
-  const inputClass =
+  const input =
     'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10';
 
-  const labelClass =
-    'mb-1.5 block text-xs font-semibold text-slate-600';
+  const ScheduleRow = ({
+    item,
+  }: {
+    item: JadwalItem;
+  }) => {
+    const conflict = isConflict(item);
+    const details =
+      getBentrokDetails(item, jadwalList) || [];
 
-  // =========================================================
-  // RENDER
-  // =========================================================
+    const id =
+      item.id || item.jadwal_id || 0;
 
-  return (
-    <div className="min-h-full bg-slate-50/60">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    return (
+      <div
+        className={`group relative border-b border-slate-100 px-4 py-3.5 transition last:border-b-0 sm:px-5 ${
+          conflict
+            ? 'bg-red-50/45 hover:bg-red-50'
+            : 'hover:bg-slate-50/80'
+        }`}
+      >
+        <div className="grid grid-cols-[72px_1fr_auto] items-center gap-3 sm:grid-cols-[110px_1fr_180px_auto] sm:gap-4">
 
-        {/* =====================================================
-            HEADER
-        ====================================================== */}
-
-        <div className="mb-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
-                  <Calendar className="h-4 w-4" />
-                </span>
-
-                <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
-                  Manajemen Akademik
-                </span>
-              </div>
-
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                Kelola Jadwal Perkuliahan
-              </h1>
-
-              <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-500">
-                Kelola jadwal perkuliahan,
-                ruangan, waktu, semester,
-                serta pantau potensi bentrok
-                secara langsung.
-              </p>
+          <div className="self-start pt-0.5">
+            <div
+              className={`text-xs font-bold ${
+                conflict
+                  ? 'text-red-600'
+                  : 'text-slate-700'
+              }`}
+            >
+              {item.jam_mulai || '--:--'}
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={fetchJadwal}
-                disabled={loading}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                title="Refresh Data"
+            <div className="mt-0.5 text-[11px] text-slate-400">
+              {item.jam_selesai || '--:--'}
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <span
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
+                  conflict
+                    ? 'bg-red-100 text-red-600'
+                    : 'bg-indigo-50 text-indigo-600'
+                }`}
               >
-                <RefreshCw
-                  className={`h-4 w-4 ${
-                    loading
-                      ? 'animate-spin'
-                      : ''
-                  }`}
-                />
+                <BookOpen className="h-3.5 w-3.5" />
+              </span>
 
-                <span className="hidden sm:inline">
-                  Refresh
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-800">
+                  {getMkName(item)}
+                </p>
+
+                {item.kode_mk && (
+                  <p className="truncate text-[10px] font-medium text-slate-400">
+                    {item.kode_mk}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 pl-9 text-[11px] text-slate-500">
+
+              <span className="inline-flex items-center gap-1">
+                <MapPin className="h-3 w-3 text-slate-400" />
+                {getRuangName(item)}
+              </span>
+
+              <span className="hidden sm:inline">
+                {getSemesterName(item)}
+              </span>
+
+              {item.catatan && (
+                <span className="hidden max-w-[240px] truncate md:inline-flex md:items-center md:gap-1">
+                  <FileText className="h-3 w-3 text-slate-300" />
+                  {item.catatan}
                 </span>
-              </button>
-
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={
-                    handleOpenAddModal
-                  }
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition hover:bg-indigo-700 hover:shadow-md active:scale-[0.98]"
-                >
-                  <Plus className="h-4 w-4" />
-                  Tambah Jadwal
-                </button>
               )}
             </div>
           </div>
-        </div>
 
-        {/* =====================================================
-            ACTIVE SEMESTER INFO
-        ====================================================== */}
+          <div className="hidden sm:block">
+            {conflict ? (
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-100 px-2.5 py-1 text-[10px] font-bold text-red-700">
+                  <AlertTriangle className="h-3 w-3" />
+                  Bentrok
+                </span>
 
-        <div className="mb-6 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-white p-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600">
-              <GraduationCap className="h-5 w-5" />
-            </div>
-
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-500">
-                Semester Aktif
-              </p>
-
-              <p className="mt-0.5 text-sm font-bold text-slate-900">
-                {formatSemester(
-                  activeSemester
+                {details.length > 0 && (
+                  <p className="mt-1 text-[10px] text-red-500">
+                    {details.length} jadwal terkait
+                  </p>
                 )}
-              </p>
-
-              <p className="mt-0.5 text-xs text-slate-500">
-                Jadwal baru otomatis
-                menggunakan semester ini.
-              </p>
-            </div>
-
-            {!activeSemester && (
-              <div className="ml-auto hidden rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 sm:block">
-                Aktifkan semester terlebih dahulu
               </div>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
+                <CheckCircle2 className="h-3 w-3" />
+                Aman
+              </span>
             )}
           </div>
+
+          {isAdmin && (
+            <div className="flex items-center justify-end gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+              <button
+                type="button"
+                onClick={() => openEdit(item)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50"
+                title="Edit"
+              >
+                <Edit className="h-3.5 w-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => remove(id)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
+                title="Hapus"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* =====================================================
-            STATISTICS
-        ====================================================== */}
+        {conflict && (
+          <div className="mt-2 sm:hidden">
+            <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+              <AlertTriangle className="h-3 w-3" />
+              Bentrok
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
 
-        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+  return (
+    <div className="min-h-full bg-slate-50/60">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-slate-500">
-                  Total Jadwal
-                </p>
+        {/* HEADER */}
+        <header className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
+                <CalendarDays className="h-4 w-4" />
+              </span>
 
-                <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
-                  {jadwalList.length}
-                </p>
-              </div>
-
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-                <Calendar className="h-5 w-5" />
-              </div>
+              <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+                Schedule Workspace
+              </span>
             </div>
+
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+              Kelola Jadwal
+            </h1>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Atur jadwal dengan cepat tanpa harus
+              berhadapan dengan tabel yang terlalu padat.
+            </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-slate-500">
-                  Jadwal Aman
-                </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={loading}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-60"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${
+                  loading ? 'animate-spin' : ''
+                }`}
+              />
 
-                <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
-                  {totalAman}
-                </p>
-              </div>
+              <span className="hidden sm:inline">
+                Refresh
+              </span>
+            </button>
 
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                <CheckCircle2 className="h-5 w-5" />
-              </div>
-            </div>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={openAdd}
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 hover:bg-indigo-700"
+              >
+                <Plus className="h-4 w-4" />
+                Tambah Jadwal
+              </button>
+            )}
+          </div>
+        </header>
+
+        {/* TOOLBAR */}
+        <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 lg:flex-row lg:items-center">
+
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Cari mata kuliah, kode, ruang, atau catatan..."
+              className={`${input} pl-9`}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            <select
+              value={dayFilter}
+              onChange={(e) =>
+                setDayFilter(e.target.value)
+              }
+              className={`${input} min-w-0 sm:w-36`}
+            >
+              <option>Semua Hari</option>
+
+              {DAYS.map((d) => (
+                <option key={d}>{d}</option>
+              ))}
+            </select>
+
+            <select
+              value={roomFilter}
+              onChange={(e) => {
+                setRoomFilter(e.target.value);
+
+                setSelectedRoom(
+                  e.target.value === 'Semua Ruang'
+                    ? null
+                    : Number(e.target.value)
+                );
+              }}
+              className={`${input} min-w-0 sm:w-44`}
+            >
+              <option>Semua Ruang</option>
+
+              {ruangOptions.map((r) => (
+                <option
+                  key={r.id}
+                  value={r.id}
+                >
+                  {r.nama}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex rounded-xl bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setViewMode('jadwal')}
+              className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition ${
+                viewMode === 'jadwal'
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-500'
+              }`}
+            >
+              <CalendarDays className="h-3.5 w-3.5" />
+              Jadwal
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode('ruang')}
+              className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition ${
+                viewMode === 'ruang'
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-500'
+              }`}
+            >
+              <MapPin className="h-3.5 w-3.5" />
+              Ruang
+            </button>
+          </div>
+        </div>
+
+        {/* STATS */}
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+            <p className="text-[11px] font-medium text-slate-400">
+              Semester aktif
+            </p>
+
+            <p className="mt-1 truncate text-sm font-bold text-slate-800">
+              {activeSemesterName}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+            <p className="text-[11px] font-medium text-slate-400">
+              Jadwal tampil
+            </p>
+
+            <p className="mt-1 text-xl font-bold text-slate-900">
+              {filtered.length}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+            <p className="text-[11px] font-medium text-slate-400">
+              Ruangan terpakai
+            </p>
+
+            <p className="mt-1 text-xl font-bold text-slate-900">
+              {roomsInUse}
+            </p>
           </div>
 
           <div
-            className={`rounded-2xl border bg-white p-4 shadow-sm ${
-              totalBentrok > 0
+            className={`rounded-2xl border bg-white p-3.5 shadow-sm ${
+              totalConflict
                 ? 'border-red-200'
                 : 'border-slate-200'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-slate-500">
-                  Jadwal Bentrok
-                </p>
+            <p className="text-[11px] font-medium text-slate-400">
+              Bentrok
+            </p>
 
-                <p
-                  className={`mt-1 text-2xl font-bold tracking-tight ${
-                    totalBentrok > 0
-                      ? 'text-red-600'
-                      : 'text-slate-900'
-                  }`}
-                >
-                  {totalBentrok}
-                </p>
-              </div>
-
-              <div
-                className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                  totalBentrok > 0
-                    ? 'bg-red-50 text-red-600'
-                    : 'bg-slate-100 text-slate-400'
-                }`}
-              >
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-            </div>
+            <p
+              className={`mt-1 text-xl font-bold ${
+                totalConflict
+                  ? 'text-red-600'
+                  : 'text-slate-900'
+              }`}
+            >
+              {totalConflict}
+            </p>
           </div>
-
         </div>
 
-        {/* =====================================================
-            ERROR
-        ====================================================== */}
-
+        {/* ERROR */}
         {error && (
           <div className="mb-5 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
 
             <div>
               <p className="text-sm font-semibold">
-                Gagal memuat jadwal
+                Gagal memuat data
               </p>
 
-              <p className="mt-0.5 text-xs text-red-600">
+              <p className="mt-0.5 text-xs">
                 {error}
               </p>
             </div>
           </div>
         )}
 
-        {/* =====================================================
-            TABLE CARD
-        ====================================================== */}
+        {/* MAIN WORKSPACE */}
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-
-          <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <h2 className="text-sm font-bold text-slate-900">
-                Daftar Jadwal
+                {viewMode === 'jadwal'
+                  ? 'Jadwal Per Hari'
+                  : 'Pemakaian Ruangan'}
               </h2>
 
               <p className="mt-0.5 text-xs text-slate-400">
-                Klik nama kolom untuk
-                mengurutkan data.
+                {viewMode === 'jadwal'
+                  ? 'Urutan waktu otomatis dari pagi hingga sore.'
+                  : 'Lihat kapan setiap ruangan digunakan.'}
               </p>
             </div>
 
-            {totalBentrok > 0 && (
-              <div className="inline-flex w-fit items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                {totalBentrok} perlu diperiksa
-              </div>
-            )}
+            <div className="flex items-center gap-2 text-[11px] font-medium text-slate-400">
+              <Clock className="h-3.5 w-3.5" />
+
+              {filtered.length} jadwal · {roomsInUse}{' '}
+              ruangan
+            </div>
           </div>
 
+          {/* LOADING */}
           {loading ? (
-            <div className="flex min-h-[360px] flex-col items-center justify-center px-6 text-center">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
-                <Loader2 className="h-6 w-6 animate-spin" />
-              </div>
+            <div className="flex min-h-[360px] flex-col items-center justify-center">
+              <Loader2 className="h-7 w-7 animate-spin text-indigo-600" />
 
-              <p className="text-sm font-semibold text-slate-700">
-                Memuat data jadwal...
-              </p>
-
-              <p className="mt-1 text-xs text-slate-400">
-                Mohon tunggu sebentar.
+              <p className="mt-3 text-sm font-semibold text-slate-700">
+                Memuat jadwal...
               </p>
             </div>
-          ) : jadwalList.length ===
-            0 ? (
-            <div className="flex min-h-[360px] flex-col items-center justify-center px-6 text-center">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                <Calendar className="h-7 w-7" />
+          ) : filtered.length === 0 ? (
+            /* EMPTY */
+            <div className="flex min-h-[340px] flex-col items-center justify-center px-6 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                <CalendarDays className="h-7 w-7" />
               </div>
 
-              <p className="font-semibold text-slate-800">
-                Belum ada jadwal
-                perkuliahan
+              <p className="mt-4 font-semibold text-slate-800">
+                Tidak ada jadwal ditemukan
               </p>
 
               <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">
-                {isAdmin
-                  ? 'Klik tombol "Tambah Jadwal" untuk membuat jadwal perkuliahan baru.'
-                  : 'Belum ada data jadwal yang tersedia saat ini.'}
+                Coba ubah pencarian atau filter. Jika
+                belum ada jadwal, tambahkan jadwal baru.
               </p>
 
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={
-                    handleOpenAddModal
-                  }
-                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-indigo-700"
+              {isAdmin &&
+                !search &&
+                dayFilter === 'Semua Hari' &&
+                roomFilter === 'Semua Ruang' && (
+                  <button
+                    type="button"
+                    onClick={openAdd}
+                    className="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Tambah Jadwal
+                  </button>
+                )}
+            </div>
+          ) : viewMode === 'jadwal' ? (
+            /* JADWAL VIEW */
+            <div>
+              {groupedByDay.map((group) => (
+                <div
+                  key={group.day}
+                  className="border-b border-slate-200 last:border-b-0"
                 >
-                  <Plus className="h-4 w-4" />
-                  Tambah Jadwal
-                </button>
-              )}
+                  <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-slate-50/95 px-4 py-2.5 backdrop-blur sm:px-5">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-indigo-500" />
+
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        {group.day}
+                      </span>
+                    </div>
+
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-400 ring-1 ring-slate-200">
+                      {group.items.length} jadwal
+                    </span>
+                  </div>
+
+                  {group.items.map((item) => (
+                    <ScheduleRow
+                      key={item.id || item.jadwal_id}
+                      item={item}
+                    />
+                  ))}
+                </div>
+              ))}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1050px] text-left text-sm">
+            /* RUANG VIEW */
+            <div>
+              {roomGroups.map(({ room, items }) => (
+                <div
+                  key={room.id}
+                  className="border-b border-slate-200 last:border-b-0"
+                >
+                  <div className="flex items-center justify-between bg-slate-50/95 px-4 py-3 sm:px-5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
+                        <MapPin className="h-4 w-4" />
+                      </span>
 
-                <thead className="border-b border-slate-200 bg-slate-50/80">
-                  <tr className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">
+                          {room.nama}
+                        </p>
 
-                    <th
-                      onClick={() =>
-                        handleSort('mk')
-                      }
-                      className="group cursor-pointer whitespace-nowrap px-5 py-3.5 transition hover:bg-slate-100"
-                    >
-                      Mata Kuliah
-                      {renderSortIcon(
-                        'mk'
-                      )}
-                    </th>
+                        <p className="text-[10px] text-slate-400">
+                          {items.length} jadwal penggunaan
+                        </p>
+                      </div>
+                    </div>
 
-                    <th
-                      onClick={() =>
-                        handleSort('hari')
-                      }
-                      className="group cursor-pointer whitespace-nowrap px-5 py-3.5 transition hover:bg-slate-100"
-                    >
-                      Hari & Waktu
-                      {renderSortIcon(
-                        'hari'
-                      )}
-                    </th>
-
-                    <th
-                      onClick={() =>
-                        handleSort('ruang')
-                      }
-                      className="group cursor-pointer whitespace-nowrap px-5 py-3.5 transition hover:bg-slate-100"
-                    >
-                      Ruang
-                      {renderSortIcon(
-                        'ruang'
-                      )}
-                    </th>
-
-                    <th
-                      onClick={() =>
-                        handleSort(
-                          'semester'
-                        )
-                      }
-                      className="group cursor-pointer whitespace-nowrap px-5 py-3.5 transition hover:bg-slate-100"
-                    >
-                      Semester
-                      {renderSortIcon(
-                        'semester'
-                      )}
-                    </th>
-
-                    <th className="whitespace-nowrap px-5 py-3.5">
-                      Status
-                    </th>
-
-                    <th className="whitespace-nowrap px-5 py-3.5">
-                      Catatan
-                    </th>
-
-                    {isAdmin && (
-                      <th className="whitespace-nowrap px-5 py-3.5 text-center">
-                        Aksi
-                      </th>
-                    )}
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-
-                  {sortedJadwalList.map(
-                    (item) => {
-                      const itemId =
-                        item.id ||
-                        item.jadwal_id ||
-                        0;
-
-                      const bentrokDetails =
-                        getBentrokDetails(
-                          item,
-                          jadwalList
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRoomFilter(
+                          String(room.id)
                         );
+                        setSelectedRoom(room.id);
+                      }}
+                      className="hidden rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-500 hover:text-indigo-600 sm:block"
+                    >
+                      Fokus ruang
+                    </button>
+                  </div>
 
-                      const isBentrok =
-                        item.is_bentrok ||
-                        (bentrokDetails &&
-                          bentrokDetails.length >
-                            0);
+                  {DAYS.map((day) => {
+                    const dayItems = items.filter(
+                      (x) => x.hari === day
+                    );
 
-                      return (
-                        <tr
-                          key={itemId}
-                          className={`group transition-colors ${
-                            isBentrok
-                              ? 'bg-red-50/50 hover:bg-red-50'
-                              : 'hover:bg-slate-50/80'
-                          }`}
-                        >
+                    return dayItems.length ? (
+                      <div key={day}>
+                        <div className="px-4 pt-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">
+                          {day}
+                        </div>
 
-                          {/* MK */}
-
-                          <td className="px-5 py-4">
-                            <div className="flex min-w-[220px] items-start gap-3">
-
-                              <div
-                                className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                                  isBentrok
-                                    ? 'bg-red-100 text-red-600'
-                                    : 'bg-indigo-50 text-indigo-600'
-                                }`}
-                              >
-                                <BookOpen className="h-4 w-4" />
-                              </div>
-
-                              <div>
-                                <p className="font-semibold leading-5 text-slate-800">
-                                  {getMkName(
-                                    item
-                                  )}
-                                </p>
-
-                                {item.kode_mk && (
-                                  <p className="mt-0.5 text-[11px] font-medium text-slate-400">
-                                    {item.kode_mk}
-                                  </p>
-                                )}
-                              </div>
-
-                            </div>
-                          </td>
-
-                          {/* HARI */}
-
-                          <td className="px-5 py-4">
-                            <div className="space-y-1.5">
-
-                              <div className="flex items-center gap-2">
-                                <Calendar
-                                  className={`h-3.5 w-3.5 ${
-                                    isBentrok
-                                      ? 'text-red-500'
-                                      : 'text-indigo-500'
-                                  }`}
-                                />
-
-                                <span className="text-xs font-semibold text-slate-700">
-                                  {item.hari}
-                                </span>
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                <Clock
-                                  className={`h-3.5 w-3.5 ${
-                                    isBentrok
-                                      ? 'text-red-400'
-                                      : 'text-slate-400'
-                                  }`}
-                                />
-
-                                <span className="text-xs text-slate-500">
-                                  {item.jam_mulai}{' '}
-                                  —{' '}
-                                  {item.jam_selesai}
-                                </span>
-                              </div>
-
-                            </div>
-                          </td>
-
-                          {/* RUANG */}
-
-                          <td className="px-5 py-4">
-                            <div className="flex items-center gap-2">
-                              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-                                <MapPin className="h-3.5 w-3.5" />
-                              </div>
-
-                              <span className="text-xs font-medium text-slate-700">
-                                {getRuangName(
-                                  item
-                                )}
-                              </span>
-                            </div>
-                          </td>
-
-                          {/* SEMESTER */}
-
-                          <td className="px-5 py-4">
-                            <span className="inline-flex items-center rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-700">
-                              {getSemesterName(
-                                item
-                              )}
-                            </span>
-                          </td>
-
-                          {/* STATUS */}
-
-                          <td className="px-5 py-4">
-                            {isBentrok ? (
-                              <div className="min-w-[190px]">
-
-                                <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-100 px-2.5 py-1 text-[11px] font-bold text-red-700">
-                                  <AlertTriangle className="h-3 w-3" />
-                                  Bentrok
-                                </span>
-
-                                {bentrokDetails &&
-                                  bentrokDetails.length >
-                                    0 && (
-                                    <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-2.5">
-                                      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-red-800">
-                                        Bentrok dengan
-                                      </p>
-
-                                      <div className="space-y-1.5">
-                                        {bentrokDetails.map(
-                                          (
-                                            b,
-                                            idx
-                                          ) => (
-                                            <div
-                                              key={
-                                                idx
-                                              }
-                                              className="text-[11px] leading-4 text-red-700"
-                                            >
-                                              <span className="font-semibold">
-                                                {
-                                                  b.mk
-                                                }
-                                              </span>
-
-                                              <span className="text-red-500">
-                                                {' '}
-                                                ·{' '}
-                                                {
-                                                  b.ruang
-                                                }
-                                              </span>
-
-                                              <div className="font-medium text-red-600">
-                                                {
-                                                  b.jam
-                                                }
-                                              </div>
-                                            </div>
-                                          )
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                              </div>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                                <CheckCircle2 className="h-3 w-3" />
-                                Aman
-                              </span>
-                            )}
-                          </td>
-
-                          {/* CATATAN */}
-
-                          <td className="px-5 py-4">
-                            <div className="flex max-w-[220px] items-start gap-2">
-                              <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-300" />
-
-                              <span
-                                className="truncate text-xs text-slate-500"
-                                title={
-                                  item.catatan ||
-                                  undefined
-                                }
-                              >
-                                {item.catatan ||
-                                  '-'}
-                              </span>
-                            </div>
-                          </td>
-
-                          {/* ACTION */}
-
-                          {isAdmin && (
-                            <td className="px-5 py-4">
-                              <div className="flex items-center justify-center gap-1 opacity-70 transition-opacity group-hover:opacity-100">
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleOpenEditModal(
-                                      item
-                                    )
-                                  }
-                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-700"
-                                  title="Edit jadwal"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleDelete(
-                                      itemId
-                                    )
-                                  }
-                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition hover:bg-red-50 hover:text-red-600"
-                                  title="Hapus jadwal"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-
-                              </div>
-                            </td>
-                          )}
-
-                        </tr>
-                      );
-                    }
-                  )}
-
-                </tbody>
-              </table>
+                        {dayItems.map((item) => (
+                          <ScheduleRow
+                            key={
+                              item.id ||
+                              item.jadwal_id
+                            }
+                            item={item}
+                          />
+                        ))}
+                      </div>
+                    ) : null;
+                  })}
+                </div>
+              ))}
             </div>
           )}
-        </div>
+        </section>
       </div>
 
-      {/* =====================================================
-          MODAL
-      ====================================================== */}
-
+      {/* MODAL */}
       {showModal && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm"
           onMouseDown={(e) => {
-            if (
-              e.target ===
-              e.currentTarget
-            ) {
+            if (e.target === e.currentTarget) {
               setShowModal(false);
             }
           }}
@@ -1556,9 +1003,7 @@ export const JadwalTable: React.FC = () => {
           <div className="my-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
 
             {/* MODAL HEADER */}
-
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
-
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
                   {isEditing ? (
@@ -1575,604 +1020,338 @@ export const JadwalTable: React.FC = () => {
                       : 'Tambah Jadwal Baru'}
                   </h2>
 
-                  <p className="mt-0.5 text-xs text-slate-400">
-                    Lengkapi informasi jadwal
-                    perkuliahan.
+                  <p className="text-xs text-slate-400">
+                    Atur mata kuliah, ruang, waktu,
+                    dan semester.
                   </p>
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={() =>
-                  setShowModal(false)
-                }
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                aria-label="Tutup"
+                onClick={() => setShowModal(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100"
               >
                 <X className="h-5 w-5" />
               </button>
-
             </div>
 
-            {/* FORM */}
-
-            <form
-              onSubmit={handleSubmit}
-            >
+            <form onSubmit={submit}>
               <div className="max-h-[70vh] overflow-y-auto px-5 py-5 sm:px-6">
 
-                {/* =================================================
-                    AKADEMIK
-                ================================================== */}
-
-                <div className="mb-6">
-
-                  <div className="mb-4">
-                    <h3 className="text-sm font-bold text-slate-800">
-                      Informasi Akademik
-                    </h3>
-
-                    <p className="mt-0.5 text-xs text-slate-400">
-                      Pilih mata kuliah dan
-                      ruangan yang sesuai.
-                    </p>
+                {formError && (
+                  <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    {formError}
                   </div>
+                )}
 
-                  {/* =================================================
-                      COMBOBOX MATA KULIAH
-                  ================================================== */}
+                {/* AKADEMIK */}
+                <div className="mb-5">
+                  <h3 className="text-sm font-bold text-slate-800">
+                    Informasi Akademik
+                  </h3>
 
-                  <div
-                    ref={
-                      mkComboboxRef
-                    }
-                    className="relative mb-4"
-                  >
-                    <label
-                      className={
-                        labelClass
-                      }
-                    >
-                      Mata Kuliah
-                    </label>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Pilih mata kuliah, ruangan, dan semester.
+                  </p>
+                </div>
 
+                {/* MK SEARCH */}
+                <div className="mb-4">
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                    Mata Kuliah
+                  </label>
+
+                  <div className="relative">
                     <div className="relative">
-
-                      <Search className="pointer-events-none absolute left-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
                       <input
-                        type="text"
                         required
-                        autoComplete="off"
-                        value={mkSearch}
-                        placeholder="Ketik nama atau kode mata kuliah..."
+                        value={
+                          mkOpen
+                            ? mkSearch
+                            : selectedMk?.nama || ''
+                        }
                         onFocus={() => {
-                          setShowMkDropdown(
-                            true
+                          setMkOpen(true);
+                          setMkSearch(
+                            selectedMk?.nama || ''
                           );
                         }}
                         onChange={(e) => {
                           setMkSearch(
                             e.target.value
                           );
-
-                          setFormData(
-                            (prev) => ({
-                              ...prev,
-                              mk_id: '',
-                            })
-                          );
-
-                          setMkHighlightIndex(
-                            0
-                          );
-
-                          setShowMkDropdown(
-                            true
-                          );
+                          setMkOpen(true);
                         }}
-                        onKeyDown={
-                          handleMkKeyDown
-                        }
-                        className={`${inputClass} pl-10 pr-10`}
+                        placeholder="Cari mata kuliah..."
+                        className={`${input} pl-9 pr-9`}
                       />
 
                       <ChevronDown
-                        className={`pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-transform ${
-                          showMkDropdown
+                        className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition ${
+                          mkOpen
                             ? 'rotate-180'
                             : ''
                         }`}
                       />
-
                     </div>
 
-                    {/* DROPDOWN */}
+                    {mkOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onMouseDown={() =>
+                            setMkOpen(false)
+                          }
+                        />
 
-                    {showMkDropdown && (
-                      <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10">
-
-                        <div className="border-b border-slate-100 bg-slate-50/80 px-3.5 py-2">
-                          <p className="text-[11px] font-semibold text-slate-500">
-                            {mkSearch
-                              ? `${filteredMkOptions.length} hasil ditemukan`
-                              : 'Pilih mata kuliah'}
-                          </p>
-                        </div>
-
-                        <div className="max-h-64 overflow-y-auto p-1.5">
-
-                          {filteredMkOptions.length ===
-                          0 ? (
-                            <div className="px-4 py-8 text-center">
-                              <Search className="mx-auto h-5 w-5 text-slate-300" />
-
-                              <p className="mt-2 text-xs font-semibold text-slate-600">
-                                Mata kuliah
-                                tidak ditemukan
-                              </p>
-
-                              <p className="mt-1 text-[11px] text-slate-400">
-                                Coba gunakan
-                                kata kunci
-                                lain.
-                              </p>
-                            </div>
-                          ) : (
+                        <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                          {filteredMkOptions.length ? (
                             filteredMkOptions.map(
-                              (
-                                option,
-                                index
-                              ) => {
-                                const isSelected =
-                                  String(
-                                    option.id
-                                  ) ===
-                                  String(
+                              (opt) => (
+                                <button
+                                  type="button"
+                                  key={opt.id}
+                                  onMouseDown={(e) =>
+                                    e.preventDefault()
+                                  }
+                                  onClick={() => {
+                                    setFormData(
+                                      (f) => ({
+                                        ...f,
+                                        mk_id:
+                                          String(
+                                            opt.id
+                                          ),
+                                      })
+                                    );
+
+                                    setMkSearch(
+                                      opt.nama
+                                    );
+
+                                    setMkOpen(false);
+                                  }}
+                                  className={`w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-indigo-50 ${
+                                    String(opt.id) ===
                                     formData.mk_id
-                                  );
-
-                                const isHighlighted =
-                                  index ===
-                                  mkHighlightIndex;
-
-                                return (
-                                  <button
-                                    key={
-                                      option.id
-                                    }
-                                    type="button"
-                                    onMouseEnter={() =>
-                                      setMkHighlightIndex(
-                                        index
-                                      )
-                                    }
-                                    onMouseDown={(
-                                      e
-                                    ) => {
-                                      e.preventDefault();
-                                      handleSelectMk(
-                                        option
-                                      );
-                                    }}
-                                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition ${
-                                      isHighlighted
-                                        ? 'bg-indigo-50'
-                                        : 'hover:bg-slate-50'
-                                    }`}
-                                  >
-
-                                    <div
-                                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                                        isSelected
-                                          ? 'bg-indigo-600 text-white'
-                                          : 'bg-slate-100 text-slate-500'
-                                      }`}
-                                    >
-                                      <BookOpen className="h-3.5 w-3.5" />
-                                    </div>
-
-                                    <div className="min-w-0 flex-1">
-                                      <p className="truncate text-xs font-semibold text-slate-800">
-                                        {
-                                          option.nama
-                                        }
-                                      </p>
-
-                                      {option.kode && (
-                                        <p className="mt-0.5 text-[10px] font-medium text-slate-400">
-                                          {
-                                            option.kode
-                                          }
-                                        </p>
-                                      )}
-                                    </div>
-
-                                    {isSelected && (
-                                      <CheckCircle2 className="h-4 w-4 shrink-0 text-indigo-600" />
-                                    )}
-
-                                  </button>
-                                );
-                              }
+                                      ? 'bg-indigo-50 font-semibold text-indigo-700'
+                                      : 'text-slate-700'
+                                  }`}
+                                >
+                                  {opt.nama}
+                                </button>
+                              )
                             )
+                          ) : (
+                            <div className="px-3 py-4 text-center text-xs text-slate-400">
+                              Mata kuliah tidak
+                              ditemukan.
+                            </div>
                           )}
-
                         </div>
-
-                        <div className="border-t border-slate-100 bg-slate-50/70 px-3 py-2">
-                          <p className="text-[10px] text-slate-400">
-                            Gunakan ↑ ↓ untuk
-                            navigasi dan Enter
-                            untuk memilih.
-                          </p>
-                        </div>
-
-                      </div>
+                      </>
                     )}
                   </div>
+                </div>
 
-                  {/* =================================================
-                      RUANG & SEMESTER
-                  ================================================== */}
+                {/* ROOM + SEMESTER */}
+                <div className="mb-5 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      Ruangan
+                    </label>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-
-                    {/* RUANG */}
-
-                    <div>
-                      <label
-                        className={
-                          labelClass
-                        }
+                    <select
+                      required
+                      value={formData.ruang_id}
+                      onChange={(e) =>
+                        setFormData((f) => ({
+                          ...f,
+                          ruang_id:
+                            e.target.value,
+                        }))
+                      }
+                      className={input}
+                    >
+                      <option
+                        value=""
+                        disabled
                       >
-                        Ruangan
-                      </label>
+                        -- Pilih Ruang --
+                      </option>
 
-                      <select
-                        required
-                        value={
-                          formData.ruang_id
-                        }
-                        onChange={(e) =>
-                          setFormData(
-                            {
-                              ...formData,
-                              ruang_id:
-                                e.target
-                                  .value,
-                            }
-                          )
-                        }
-                        className={
-                          inputClass
-                        }
-                      >
+                      {ruangOptions.map((x) => (
                         <option
-                          value=""
-                          disabled
+                          key={x.id}
+                          value={x.id}
                         >
-                          -- Pilih Ruang --
+                          {x.nama}
                         </option>
+                      ))}
+                    </select>
+                  </div>
 
-                        {ruangOptions.map(
-                          (opt) => (
-                            <option
-                              key={
-                                opt.id
-                              }
-                              value={
-                                opt.id
-                              }
-                            >
-                              {
-                                opt.nama
-                              }
-                            </option>
-                          )
-                        )}
-                      </select>
-                    </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      Semester
+                    </label>
 
-                    {/* SEMESTER AKTIF */}
-
-                    <div>
-                      <label
-                        className={
-                          labelClass
-                        }
+                    <select
+                      required
+                      value={
+                        formData.master_semester_id
+                      }
+                      onChange={(e) =>
+                        setFormData((f) => ({
+                          ...f,
+                          master_semester_id:
+                            e.target.value,
+                        }))
+                      }
+                      className={input}
+                    >
+                      <option
+                        value=""
+                        disabled
                       >
-                        Semester
-                      </label>
+                        -- Pilih Semester --
+                      </option>
 
-                      <div
-                        className={`flex min-h-[42px] items-center gap-3 rounded-xl border px-3.5 py-2.5 ${
-                          activeSemester
-                            ? 'border-indigo-100 bg-indigo-50/70'
-                            : 'border-amber-200 bg-amber-50'
-                        }`}
-                      >
-                        <div
-                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
-                            activeSemester
-                              ? 'bg-indigo-100 text-indigo-600'
-                              : 'bg-amber-100 text-amber-600'
-                          }`}
-                        >
-                          <GraduationCap className="h-4 w-4" />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className={`truncate text-xs font-bold ${
-                              activeSemester
-                                ? 'text-indigo-800'
-                                : 'text-amber-800'
-                            }`}
+                      {semesterOptions.map(
+                        (x) => (
+                          <option
+                            key={x.id}
+                            value={x.id}
                           >
-                            {isEditing
-                              ? getSemesterName(
-                                  jadwalList.find(
-                                    (
-                                      item
-                                    ) =>
-                                      (
-                                        item.id ||
-                                        item.jadwal_id
-                                      ) ===
-                                      selectedId
-                                  ) ||
-                                    ({
-                                      master_semester_id:
-                                        Number(
-                                          formData.master_semester_id
-                                        ),
-                                    } as JadwalItem)
-                                )
-                              : formatSemester(
-                                  activeSemester
-                                )}
-                          </p>
-
-                          <p
-                            className={`text-[10px] ${
-                              activeSemester
-                                ? 'text-indigo-500'
-                                : 'text-amber-600'
-                            }`}
-                          >
-                            {isEditing
-                              ? 'Semester jadwal ini'
-                              : 'Otomatis dari semester aktif'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {!activeSemester &&
-                        !isEditing && (
-                          <p className="mt-1.5 text-[10px] font-medium text-amber-600">
-                            Belum ada semester aktif.
-                            Atur di Master Semester
-                            terlebih dahulu.
-                          </p>
-                        )}
-                    </div>
-
+                            {x.nama}
+                          </option>
+                        )
+                      )}
+                    </select>
                   </div>
                 </div>
 
-                {/* DIVIDER */}
+                {/* TIME */}
+                <div className="mb-5 border-t border-slate-100 pt-5">
+                  <h3 className="text-sm font-bold text-slate-800">
+                    Waktu Perkuliahan
+                  </h3>
 
-                <div className="mb-6 border-t border-slate-100" />
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Tentukan hari dan rentang waktu.
+                  </p>
+                </div>
 
-                {/* =================================================
-                    WAKTU
-                ================================================== */}
+                <div className="mb-5 grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      Hari
+                    </label>
 
-                <div className="mb-6">
-
-                  <div className="mb-4">
-                    <h3 className="text-sm font-bold text-slate-800">
-                      Waktu Perkuliahan
-                    </h3>
-
-                    <p className="mt-0.5 text-xs text-slate-400">
-                      Tentukan hari dan rentang
-                      waktu perkuliahan.
-                    </p>
+                    <select
+                      value={formData.hari}
+                      onChange={(e) =>
+                        setFormData((f) => ({
+                          ...f,
+                          hari: e.target.value,
+                        }))
+                      }
+                      className={input}
+                    >
+                      {DAYS.map((d) => (
+                        <option key={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      Jam Mulai
+                    </label>
 
-                    {/* HARI */}
+                    <input
+                      required
+                      type="time"
+                      value={formData.jam_mulai}
+                      onChange={(e) =>
+                        setFormData((f) => ({
+                          ...f,
+                          jam_mulai:
+                            e.target.value,
+                        }))
+                      }
+                      className={input}
+                    />
+                  </div>
 
-                    <div>
-                      <label
-                        className={
-                          labelClass
-                        }
-                      >
-                        Hari
-                      </label>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      Jam Selesai
+                    </label>
 
-                      <select
-                        value={
-                          formData.hari
-                        }
-                        onChange={(e) =>
-                          setFormData(
-                            {
-                              ...formData,
-                              hari:
-                                e.target
-                                  .value,
-                            }
-                          )
-                        }
-                        className={
-                          inputClass
-                        }
-                      >
-                        {[
-                          'Senin',
-                          'Selasa',
-                          'Rabu',
-                          'Kamis',
-                          'Jumat',
-                          'Sabtu',
-                          'Minggu',
-                        ].map(
-                          (hari) => (
-                            <option
-                              key={hari}
-                              value={hari}
-                            >
-                              {hari}
-                            </option>
-                          )
-                        )}
-                      </select>
-                    </div>
-
-                    {/* JAM MULAI */}
-
-                    <div>
-                      <label
-                        className={
-                          labelClass
-                        }
-                      >
-                        Jam Mulai
-                      </label>
-
-                      <input
-                        type="time"
-                        required
-                        value={
-                          formData.jam_mulai
-                        }
-                        onChange={(e) =>
-                          setFormData(
-                            {
-                              ...formData,
-                              jam_mulai:
-                                e.target
-                                  .value,
-                            }
-                          )
-                        }
-                        className={
-                          inputClass
-                        }
-                      />
-                    </div>
-
-                    {/* JAM SELESAI */}
-
-                    <div>
-                      <label
-                        className={
-                          labelClass
-                        }
-                      >
-                        Jam Selesai
-                      </label>
-
-                      <input
-                        type="time"
-                        required
-                        value={
-                          formData.jam_selesai
-                        }
-                        onChange={(e) =>
-                          setFormData(
-                            {
-                              ...formData,
-                              jam_selesai:
-                                e.target
-                                  .value,
-                            }
-                          )
-                        }
-                        className={
-                          inputClass
-                        }
-                      />
-                    </div>
-
+                    <input
+                      required
+                      type="time"
+                      value={formData.jam_selesai}
+                      onChange={(e) =>
+                        setFormData((f) => ({
+                          ...f,
+                          jam_selesai:
+                            e.target.value,
+                        }))
+                      }
+                      className={input}
+                    />
                   </div>
                 </div>
 
-                {/* DIVIDER */}
-
-                <div className="mb-6 border-t border-slate-100" />
-
-                {/* =================================================
-                    CATATAN
-                ================================================== */}
-
-                <div>
-
-                  <div className="mb-4">
-                    <h3 className="text-sm font-bold text-slate-800">
-                      Catatan
-                    </h3>
-
-                    <p className="mt-0.5 text-xs text-slate-400">
-                      Tambahkan informasi tambahan
-                      jika diperlukan.
-                    </p>
-                  </div>
+                {/* NOTES */}
+                <div className="border-t border-slate-100 pt-5">
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                    Catatan{' '}
+                    <span className="font-normal text-slate-400">
+                      (opsional)
+                    </span>
+                  </label>
 
                   <textarea
                     rows={3}
-                    placeholder="Contoh: Dosen berhalangan hadir, diganti praktikum..."
-                    value={
-                      formData.catatan
-                    }
+                    value={formData.catatan}
                     onChange={(e) =>
-                      setFormData(
-                        {
-                          ...formData,
-                          catatan:
-                            e.target
-                              .value,
-                        }
-                      )
+                      setFormData((f) => ({
+                        ...f,
+                        catatan:
+                          e.target.value,
+                      }))
                     }
-                    className={`${inputClass} resize-none`}
+                    placeholder="Tambahkan informasi tambahan..."
+                    className={`${input} resize-none`}
                   />
-
                 </div>
-
               </div>
 
-              {/* =================================================
-                  FOOTER
-              ================================================== */}
-
+              {/* FOOTER */}
               <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-
                 <button
                   type="button"
                   onClick={() =>
                     setShowModal(false)
                   }
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                  className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   Batal
                 </button>
 
                 <button
                   type="submit"
-                  disabled={
-                    submitting ||
-                    !formData.mk_id ||
-                    !formData.ruang_id ||
-                    !formData.master_semester_id
-                  }
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={submitting}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {submitting ? (
                     <>
@@ -2182,16 +1361,13 @@ export const JadwalTable: React.FC = () => {
                   ) : (
                     <>
                       <Save className="h-4 w-4" />
-
                       {isEditing
                         ? 'Simpan Perubahan'
                         : 'Tambah Jadwal'}
                     </>
                   )}
                 </button>
-
               </div>
-
             </form>
           </div>
         </div>
