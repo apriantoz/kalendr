@@ -39,7 +39,7 @@ export default function App() {
             element={isAdmin ? <DashboardPage /> : <Navigate to="/" replace />}
           />
           <Route
-            path="/jadwal"
+            path="/kelola-jadwal"
             element={isAdmin ? <JadwalTable /> : <Navigate to="/" replace />}
           />
           <Route

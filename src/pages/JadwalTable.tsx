@@ -1,5 +1,6 @@
 // src/pages/JadwalTable.tsx
 import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -60,6 +61,9 @@ const dayIndex: Record<string, number> = Object.fromEntries(
 
 export const JadwalTable: React.FC = () => {
   const { isAdmin } = useAuth();
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editIdParam = searchParams.get('edit');
 
   const [jadwalList, setJadwalList] = useState<JadwalItem[]>([]);
   const [mkOptions, setMkOptions] = useState<DropdownOption[]>([]);
@@ -394,6 +398,33 @@ export const JadwalTable: React.FC = () => {
 
     setShowModal(true);
   };
+
+  // Auto-open form Edit Jadwal ketika halaman dibuka
+  // melalui /kelola-jadwal?edit=ID dari Dashboard.
+  useEffect(() => {
+    if (!editIdParam || !jadwalList.length) {
+      return;
+    }
+
+    const editId = Number(editIdParam);
+
+    if (!Number.isFinite(editId)) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    const item = jadwalList.find(
+      (x) => Number(x.id ?? x.jadwal_id) === editId
+    );
+
+    if (!item) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    openEdit(item);
+    setSearchParams({}, { replace: true });
+  }, [jadwalList, editIdParam]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -131,7 +131,7 @@ const Navbar = () => {
                 </Link>
 
                 <Link
-                  to="/jadwal"
+                  to="/kelola-jadwal"
                   className={navItemClass("/jadwal")}
                 >
                   <TableProperties size={16} />
