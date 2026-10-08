@@ -14,6 +14,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   Clock,
   Edit,
   FileText,
@@ -29,6 +30,7 @@ import {
 
 export interface JadwalItem extends ScheduleItem {
   kode_mk?: string;
+  nama_prodi?: string;
   tahun_ajaran?: string;
   tipe_semester?: string;
   catatan?: string;
@@ -85,6 +87,11 @@ export const JadwalTable: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  // Conflict dialog
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [selectedConflictItem, setSelectedConflictItem] =
+    useState<JadwalItem | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -219,6 +226,27 @@ export const JadwalTable: React.FC = () => {
     return Boolean(item.is_bentrok || (details && details.length));
   };
 
+  /**
+   * Buka dialog detail semua jadwal yang bentrok
+   */
+  const openConflictDetails = (item: JadwalItem) => {
+    setSelectedConflictItem(item);
+    setShowConflictModal(true);
+  };
+
+  /**
+   * Edit jadwal dari dialog bentrok.
+   * Dialog bentrok ditutup terlebih dahulu agar tidak ada
+   * dua modal bertumpuk.
+   */
+  const editConflictSchedule = (item: JadwalItem) => {
+    setShowConflictModal(false);
+
+    window.setTimeout(() => {
+      openEdit(item);
+    }, 80);
+  };
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
 
@@ -228,6 +256,7 @@ export const JadwalTable: React.FC = () => {
           getMkName(item),
           getRuangName(item),
           item.kode_mk || '',
+          item.nama_prodi || '',
           item.hari || '',
           getSemesterName(item),
           item.catatan || '',
@@ -475,9 +504,23 @@ export const JadwalTable: React.FC = () => {
   }: {
     item: JadwalItem;
   }) => {
+    // const conflict = isConflict(item);
+
+    // const details =
+    //   getBentrokDetails(item, jadwalList) || [];
+
+    // const conflictItems =
+    //   details as unknown as JadwalItem[];
+
+    // const firstConflict =
+    //   conflictItems[0] || null;
     const conflict = isConflict(item);
-    const details =
-      getBentrokDetails(item, jadwalList) || [];
+
+const conflictItems =
+  getBentrokDetails(item, jadwalList) || [];
+
+const firstConflict =
+  conflictItems[0] || null;
 
     const id =
       item.id || item.jadwal_id || 0;
@@ -490,8 +533,9 @@ export const JadwalTable: React.FC = () => {
             : 'hover:bg-slate-50/80'
         }`}
       >
-        <div className="grid grid-cols-[72px_1fr_auto] items-center gap-3 sm:grid-cols-[110px_1fr_180px_auto] sm:gap-4">
+        <div className="grid grid-cols-[72px_1fr_auto] items-center gap-3 sm:grid-cols-[110px_1fr_250px_auto] sm:gap-4">
 
+          {/* TIME */}
           <div className="self-start pt-0.5">
             <div
               className={`text-xs font-bold ${
@@ -508,6 +552,7 @@ export const JadwalTable: React.FC = () => {
             </div>
           </div>
 
+          {/* MAIN INFO */}
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <span
@@ -525,11 +570,13 @@ export const JadwalTable: React.FC = () => {
                   {getMkName(item)}
                 </p>
 
-                {item.kode_mk && (
-                  <p className="truncate text-[10px] font-medium text-slate-400">
-                    {item.kode_mk}
-                  </p>
-                )}
+                <p className="truncate text-[10px] font-medium text-slate-400">
+                  {item.nama_prodi ||
+                    'Prodi belum tersedia'}
+
+                  {item.kode_mk &&
+                    ` • ${item.kode_mk}`}
+                </p>
               </div>
             </div>
 
@@ -553,20 +600,57 @@ export const JadwalTable: React.FC = () => {
             </div>
           </div>
 
+          {/* CONFLICT STATUS */}
           <div className="hidden sm:block">
             {conflict ? (
-              <div>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-100 px-2.5 py-1 text-[10px] font-bold text-red-700">
-                  <AlertTriangle className="h-3 w-3" />
-                  Bentrok
-                </span>
+              <button
+                type="button"
+                onClick={() =>
+                  openConflictDetails(item)
+                }
+                className="group/conflict w-full rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left transition hover:border-red-300 hover:bg-red-100 hover:shadow-sm"
+                title="Klik untuk melihat seluruh jadwal yang bentrok"
+              >
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-600">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  </span>
 
-                {details.length > 0 && (
-                  <p className="mt-1 text-[10px] text-red-500">
-                    {details.length} jadwal terkait
-                  </p>
-                )}
-              </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wide text-red-700">
+                        Bentrok dengan
+                      </span>
+
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-red-400 transition group-hover/conflict:translate-x-0.5" />
+                    </div>
+
+                    {firstConflict ? (
+                      <>
+                        <p className="mt-0.5 truncate text-[11px] font-bold text-red-700">
+                          {firstConflict.nama_prodi ||
+                            'Prodi belum tersedia'}
+                        </p>
+
+                        <p className="truncate text-[10px] font-medium text-red-600">
+                          {getMkName(firstConflict)}
+                        </p>
+
+                        {conflictItems.length > 1 && (
+                          <p className="mt-0.5 text-[9px] font-semibold text-red-500">
+                            +{conflictItems.length - 1}{' '}
+                            jadwal lainnya
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="mt-0.5 text-[10px] font-medium text-red-500">
+                        Klik untuk melihat detail bentrok
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </button>
             ) : (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
                 <CheckCircle2 className="h-3 w-3" />
@@ -575,6 +659,7 @@ export const JadwalTable: React.FC = () => {
             )}
           </div>
 
+          {/* ACTIONS */}
           {isAdmin && (
             <div className="flex items-center justify-end gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
               <button
@@ -598,12 +683,50 @@ export const JadwalTable: React.FC = () => {
           )}
         </div>
 
+        {/* MOBILE CONFLICT */}
         {conflict && (
           <div className="mt-2 sm:hidden">
-            <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
-              <AlertTriangle className="h-3 w-3" />
-              Bentrok
-            </span>
+            <button
+              type="button"
+              onClick={() =>
+                openConflictDetails(item)
+              }
+              className="flex w-full items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-2.5 py-2 text-left transition hover:bg-red-100"
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-600">
+                <AlertTriangle className="h-3.5 w-3.5" />
+              </span>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-[9px] font-extrabold uppercase tracking-wide text-red-600">
+                  Bentrok dengan
+                </p>
+
+                {firstConflict ? (
+                  <>
+                    <p className="truncate text-[10px] font-bold text-red-700">
+                      {firstConflict.nama_prodi ||
+                        'Prodi belum tersedia'}
+                      {' • '}
+                      {getMkName(firstConflict)}
+                    </p>
+
+                    {conflictItems.length > 1 && (
+                      <p className="text-[9px] font-medium text-red-500">
+                        +{conflictItems.length - 1}{' '}
+                        jadwal lainnya
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[10px] text-red-500">
+                    Klik untuk melihat detail
+                  </p>
+                )}
+              </div>
+
+              <ChevronRight className="h-4 w-4 shrink-0 text-red-400" />
+            </button>
           </div>
         )}
       </div>
@@ -677,7 +800,7 @@ export const JadwalTable: React.FC = () => {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari mata kuliah, kode, ruang, atau catatan..."
+              placeholder="Cari mata kuliah, prodi, kode, ruang, atau catatan..."
               className={`${input} pl-9`}
             />
           </div>
@@ -990,7 +1113,297 @@ export const JadwalTable: React.FC = () => {
         </section>
       </div>
 
-      {/* MODAL */}
+      {/* ========================================================= */}
+      {/* CONFLICT DETAIL MODAL                                     */}
+      {/* ========================================================= */}
+      {showConflictModal && selectedConflictItem && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowConflictModal(false);
+            }
+          }}
+        >
+          <div className="my-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-red-200 bg-white shadow-2xl">
+
+            {/* HEADER */}
+            <div className="flex items-start justify-between border-b border-red-100 bg-red-50/70 px-5 py-4 sm:px-6">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold text-red-800">
+                    Detail Jadwal Bentrok
+                  </h2>
+
+                  <p className="mt-0.5 text-xs text-red-500">
+                    Jadwal berikut menggunakan ruangan
+                    dan waktu yang saling bertabrakan.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowConflictModal(false)
+                }
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-red-400 hover:bg-red-100 hover:text-red-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="max-h-[75vh] overflow-y-auto">
+
+              {/* SELECTED SCHEDULE */}
+              <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Jadwal yang dipilih
+                </p>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
+                      <BookOpen className="h-4 w-4" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-slate-800">
+                        {getMkName(
+                          selectedConflictItem
+                        )}
+                      </p>
+
+                      <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">
+                        {selectedConflictItem.nama_prodi ||
+                          'Prodi belum tersedia'}
+
+                        {selectedConflictItem.kode_mk &&
+                          ` • ${selectedConflictItem.kode_mk}`}
+                      </p>
+
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {selectedConflictItem.jam_mulai ||
+                            '--:--'}{' '}
+                          -{' '}
+                          {selectedConflictItem.jam_selesai ||
+                            '--:--'}
+                        </span>
+
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {getRuangName(
+                            selectedConflictItem
+                          )}
+                        </span>
+
+                        <span>
+                          {selectedConflictItem.hari ||
+                            '-'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* CONFLICT LIST */}
+              <div className="px-5 py-4 sm:px-6">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">
+                      Bentrok dengan
+                    </p>
+
+                    <p className="mt-0.5 text-[10px] text-slate-400">
+                      Seluruh jadwal yang terdeteksi
+                      bentrok dengan jadwal ini.
+                    </p>
+                  </div>
+
+                  <span className="shrink-0 rounded-full bg-red-100 px-2.5 py-1 text-[10px] font-bold text-red-700">
+                    {
+                      (
+                        getBentrokDetails(
+                          selectedConflictItem,
+                          jadwalList
+                        ) || []
+                      ).length
+                    }{' '}
+                    jadwal
+                  </span>
+                </div>
+
+                {(
+                  getBentrokDetails(
+                    selectedConflictItem,
+                    jadwalList
+                  ) || []
+                ).length > 0 ? (
+                  <div className="space-y-2.5">
+                    {(
+                      getBentrokDetails(
+                        selectedConflictItem,
+                        jadwalList
+                      ) || []
+                    ).map((rawItem, index) => {
+                      const conflictItem =
+                        rawItem as unknown as JadwalItem;
+
+                      const conflictId =
+                        conflictItem.id ||
+                        conflictItem.jadwal_id ||
+                        index;
+
+                      return (
+                        <div
+                          key={conflictId}
+                          className="rounded-xl border border-slate-200 bg-white p-3.5 transition hover:border-red-200 hover:bg-red-50/30"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
+                              <AlertTriangle className="h-4 w-4" />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-bold text-slate-800">
+                                    {getMkName(
+                                      conflictItem
+                                    )}
+                                  </p>
+
+                                  <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">
+                                    {conflictItem.nama_prodi ||
+                                      'Prodi belum tersedia'}
+
+                                    {conflictItem.kode_mk &&
+                                      ` • ${conflictItem.kode_mk}`}
+                                  </p>
+                                </div>
+
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      editConflictSchedule(
+                                        conflictItem
+                                      )
+                                    }
+                                    className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-indigo-50 px-3 text-[10px] font-bold text-indigo-600 transition hover:bg-indigo-100"
+                                  >
+                                    <Edit className="h-3 w-3" />
+                                    Edit
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+                                <div className="rounded-lg bg-slate-50 px-2.5 py-2">
+                                  <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                                    Hari & Waktu
+                                  </p>
+
+                                  <p className="mt-0.5 text-[10px] font-semibold text-slate-700">
+                                    {conflictItem.hari ||
+                                      '-'}{' '}
+                                    ·{' '}
+                                    {conflictItem.jam_mulai ||
+                                      '--:--'}{' '}
+                                    -{' '}
+                                    {conflictItem.jam_selesai ||
+                                      '--:--'}
+                                  </p>
+                                </div>
+
+                                <div className="rounded-lg bg-slate-50 px-2.5 py-2">
+                                  <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                                    Ruangan
+                                  </p>
+
+                                  <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-700">
+                                    {getRuangName(
+                                      conflictItem
+                                    )}
+                                  </p>
+                                </div>
+
+                                <div className="rounded-lg bg-slate-50 px-2.5 py-2">
+                                  <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                                    Semester
+                                  </p>
+
+                                  <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-700">
+                                    {getSemesterName(
+                                      conflictItem
+                                    )}
+                                  </p>
+                                </div>
+
+                                {conflictItem.catatan && (
+                                  <div className="rounded-lg bg-slate-50 px-2.5 py-2">
+                                    <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                                      Catatan
+                                    </p>
+
+                                    <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-700">
+                                      {
+                                        conflictItem.catatan
+                                      }
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-8 text-center">
+                    <AlertTriangle className="mx-auto h-6 w-6 text-slate-300" />
+
+                    <p className="mt-2 text-xs font-semibold text-slate-600">
+                      Detail bentrok tidak ditemukan
+                    </p>
+
+                    <p className="mt-1 text-[10px] text-slate-400">
+                      Status bentrok tersedia dari database,
+                      tetapi detail jadwal terkait tidak
+                      dikembalikan oleh helper.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* FOOTER */}
+            <div className="flex justify-end border-t border-slate-100 bg-slate-50/70 px-5 py-3.5 sm:px-6">
+              <button
+                type="button"
+                onClick={() =>
+                  setShowConflictModal(false)
+                }
+                className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* ADD / EDIT MODAL                                          */}
+      {/* ========================================================= */}
       {showModal && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm"
