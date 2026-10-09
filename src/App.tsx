@@ -1,18 +1,22 @@
 // src/App.tsx
 import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { HomePage } from "@/pages/HomePage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { JadwalTable } from "@/pages/JadwalTable";
 import { MasterSemesterPage } from "@/pages/MasterSemesterPage";
 import { MasterDataPage } from "@/pages/MasterDataPage";
-import  Navbar  from "@/components/Navbar";
+import Navbar from "@/components/Navbar";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2 } from "lucide-react";
 import LoginPage from "@/pages/LoginPage";
 
 export default function App() {
   const { isAdmin, loading } = useAuth();
+  const location = useLocation(); // Mendapatkan informasi URL saat ini
+
+  // Cek apakah user sedang berada di halaman login
+  const isLoginPage = location.pathname === "/login";
 
   // Spinner saat cek session Supabase
   if (loading) {
@@ -26,12 +30,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
-      <Navbar />
-      <main className="py-6">
+      {/* Navbar hanya akan dirender jika BUKAN di halaman login */}
+      {!isLoginPage && <Navbar />}
+      
+      <main className={isLoginPage ? "" : "py-6"}>
         <Routes>
           {/* Halaman Publik */}
           <Route path="/" element={<HomePage />} />
-          <Route path ="/login" element={<LoginPage/>}/>
+          <Route path="/login" element={<LoginPage />} />
 
           {/* Halaman Khusus Admin */}
           <Route
